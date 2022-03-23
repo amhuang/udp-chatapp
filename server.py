@@ -1,27 +1,25 @@
 import socket
 import pickle
+from _thread import *
 from tabulate import tabulate
 
 TABLE = [['name','ip','port','status']]
+ThreadCount = 0
 
 def run(server_port):
-    HOST = "127.0.0.1"
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((HOST, server_port))
+    s.bind((socket.gethostname(), server_port))
+    print("Server is listening...")
     s.listen()
 
-    print("The server is ready.")
     while True:
         connSock, addr = s.accept()
         print(f"Connected by {addr}")
         name = connSock.recv(1024).decode()
-        if not name:
-            print("No data received")
-        else:
-            entry = [name, addr[0], addr[1], 'yes']
-            TABLE.append(entry)
-        
-        print(tabulate(TABLE))
+        connSock.sendall(b"ACK")
+        entry = [name, addr[0], addr[1], 'yes']
+        TABLE.append(entry)
         msg = pickle.dumps(TABLE)
         connSock.sendall(msg)
+        
         #connSock.close()

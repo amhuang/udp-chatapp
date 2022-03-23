@@ -8,7 +8,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'chatapp = chatapp:cli',
+            'chatapp = app:cli',
         ],
     },
 )
