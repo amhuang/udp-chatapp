@@ -15,26 +15,26 @@ class chatCommand(click.Command):
             args.insert(1, '')
             args.insert(2, '')
             args.insert(4, '0')
-            valid_port(args[3]) # Validate server port
+            self.valid_port(args[3]) # Validate server port
 
         elif args[0] == "-c":
             if len(args) != 5:
                 raise click.UsageError("Client name, server IP address, server’s listening port number, and client's listening port number are required.")
-            valid_ip(args[2])
-            valid_port(args[3]) # Validate server port
-            valid_port(args[4]) # Validate client port
+            self.valid_ip(args[2])
+            self.valid_port(args[3]) # Validate server port
+            self.valid_port(args[4]) # Validate client port
            
         super(chatCommand, self).parse_args(ctx, args)
 
-def valid_port(port):
-    if int(port) < 1024 or 65535 < int(port):
-        raise click.UsageError("Port numbers must be in the range 1024-65535.")
+    def valid_port(self, port):
+        if int(port) < 1024 or 65535 < int(port):
+            raise click.UsageError("Port numbers must be in the range 1024-65535.")
 
-def valid_ip(addr):
-    try:
-        ip = ipaddress.ip_address(addr)
-    except ValueError:
-        raise click.UsageError("Please provide a valid IP address for the server.")
+    def valid_ip(self, addr):
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            raise click.UsageError("Please provide a valid IP address for the server.")
 
 @click.command(cls=chatCommand)
 @click.option("-s", is_flag=True, default=False, help="Runs chatapp server")
