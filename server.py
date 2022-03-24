@@ -1,6 +1,6 @@
 import socket
 import pickle
-from _thread import *
+import threading
 from tabulate import tabulate
 
 table = [['name','ip','port','status']]
@@ -16,23 +16,29 @@ def run(server_port):
     while True:
         connSock, addr = s.accept()
         print(f"Connected by {addr}")
-        
-        while True:
-            response = connSock.recv(1024).decode()
-            print("response:", response)
+        th = threading.Thread(target=new_client, args=(connSock, addr,))
+        th.start()
+        print("Threads:", threading.active_count())
 
-            if response[0:4] == "reg ":
-                name = response[4:].strip()
-                register(name, connSock, addr)
-                next
+    s.close()
 
-            elif response[0:6] == "dereg ":
-                name = response[6:].strip()
-                print(name)
-                if dereg(name):
-                    connSock.send(b"OK")
+def new_client(connSock, addr):
+    while True:
+        response = connSock.recv(1024).decode()
+        print("response:", response)
 
-def register(name, connSock, addr):
+        if response[0:4] == "reg ":
+            name = response[4:].strip()
+            register(connSock, addr, name)
+            next
+
+        elif response[0:6] == "dereg ":
+            name = response[6:].strip()
+            print(name)
+            if dereg(name):
+                connSock.send(b"OK")
+
+def register(connSock, addr, name):
     for i in range(len(table)):
         if table[i][0] == name:
             connSock.send(b"OK")
