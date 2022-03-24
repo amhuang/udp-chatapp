@@ -2,6 +2,7 @@ import socket
 import pickle
 from tabulate import tabulate
 import select
+import threading
 
 table = [['name','ip','port','status']]
 
@@ -13,6 +14,9 @@ def run(name, server_ip, server_port, client_port):
 
     if register(name):
         #sock.setblocking(0)
+        update_th = threading.Thread(target=table_updates, args=())
+        update_th.start()
+
         while True:
             print(">>> ", end="")
             data = input()
@@ -23,9 +27,23 @@ def run(name, server_ip, server_port, client_port):
             else:
                 next
 
+def table_updates():
+    print("listening thread opened")
+    while True:
+        msg = sock.recv(2048)
+        print("recv from tab thread:", msg)
+        if msg[0:5] == b"table":
+            table = pickle.loads(msg[5:])
+            print(">>> [Client table updated.]")
+            print(tabulate(table))
+            sock.sendall(b"OK")
+            print(">>> ", end="")
+        elif msg == b'':
+            sock.close()
+
 def register(name):
     msg = "reg " + name
-    sock.send(msg.encode())
+    sock.sendall(msg.encode())
 
     register_ack = sock.recv(2).decode()
     if register_ack == "OK":
@@ -35,15 +53,11 @@ def register(name):
         sock.close()
         return False
     
-    response = sock.recv(1024)
-    table = pickle.loads(response)
-    print(">>> [Client table updated.]")
-    print(tabulate(table))
     return True
 
 def dereg(name):
     msg = "dereg " + name
-    sock.send(msg.encode())
+    sock.sendall(msg.encode())
     response = sock.recv(2).decode()
     if response == "OK":
         print(">>> [You are Offline. Bye.]")
