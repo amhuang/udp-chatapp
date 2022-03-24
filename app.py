@@ -1,7 +1,7 @@
 import click
 import subprocess
 import server
-from client import Client
+import client
 import ipaddress
 
 class chatCommand(click.Command):
@@ -58,7 +58,7 @@ def cli(s, c, name, server_ip, server_port, client_port): # name, server_ip,
     if s and not c:
         server.run(server_port)
     elif c and not s:
-        client = Client(name, server_ip, server_port, client_port)
-        client.run()
+        #client = Client()
+        client.run(name, server_ip, server_port, client_port)
     else: 
         click.echo("Please specify client or server mode to run the chatapp")

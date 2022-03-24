@@ -16,24 +16,42 @@ def run(server_port):
     while True:
         connSock, addr = s.accept()
         print(f"Connected by {addr}")
-        name = connSock.recv(1024).decode()
-        connSock.sendall(b"OK")
-        entry = [name, addr[0], addr[1], 'yes']
-        table.append(entry)
-        connSock.sendall(pickle.dumps(table))
         
-        response = connSock.recv(1024).decode()
-        if response == "dereg":
-            connSock.send(b"OK")
-            name = connSock.recv(1024).decode()
-            if dereg(name):
-                connSock.send(b"OK")
+        while True:
+            response = connSock.recv(1024).decode()
+            print("response:", response)
 
+            if response[0:4] == "reg ":
+                name = response[4:].strip()
+                register(name, connSock, addr)
+                next
+
+            elif response[0:6] == "dereg ":
+                name = response[6:].strip()
+                print(name)
+                if dereg(name):
+                    connSock.send(b"OK")
+
+def register(name, connSock, addr):
+    for i in range(len(table)):
+        if table[i][0] == name:
+            connSock.send(b"OK")
+            table[i][3] = "yes"
+            connSock.sendall(pickle.dumps(table))
+            print(tabulate(table))
+            return 
+    
+    connSock.send(b"OK")
+    entry = [name, addr[0], addr[1], 'yes']
+    table.append(entry)
+    connSock.sendall(pickle.dumps(table))
+    print(tabulate(table))
             
 def dereg(name):
     for i in range(len(table)):
         if table[i][0] == name:
             print("Deregistering " + name + " ...")
             table[i][3] = "no"
+            print(tabulate(table))
             return True
     return False
