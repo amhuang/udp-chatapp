@@ -30,21 +30,26 @@ def run(name, server_ip, server_port, client_port):
 def table_updates():
     print("listening thread opened")
     while True:
-        msg = sock.recv(2048)
+        msg = sock.recv(5)
         print("recv from tab thread:", msg)
-        if msg[0:5] == b"table":
-            table = pickle.loads(msg[5:])
+        if not msg:
+            sock.close
+        elif msg == b"table":
+            msg = sock.recv(2048)
+            print("recv from tab thread:", msg)
+            table = pickle.loads(msg)
             print(">>> [Client table updated.]")
             print(tabulate(table))
+            print(">>> ", end="", flush=True)
             sock.sendall(b"OK")
-            print(">>> ", end="")
-        elif msg == b'':
-            sock.close()
+            next
+        else: 
+            msg = sock.recv(2048)
+            
 
 def register(name):
     msg = "reg " + name
     sock.sendall(msg.encode())
-
     register_ack = sock.recv(2).decode()
     if register_ack == "OK":
         print(">>> [Welcome, You are registered.]")
