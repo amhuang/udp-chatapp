@@ -24,69 +24,49 @@ def run(server_port):
     while True:
         connSock, addr = s.accept()
         print(f"Connected by {addr}")
-        '''register(connSock, addr)
-        broadcast_table()'''
-
         client_th = threading.Thread(target=new_client, args=(connSock, addr, lock,))
         client_th.start()
 
-    '''while True:
-        response = connSock.recv(1024).decode()
-        if response[0:4] == "reg ":
-            name = response[4:].strip()
-            register(connSock, addr, name)
-            broadcast_table()
-        
-        th = threading.Thread(target=new_client, args=(connSock, addr, lock,))
-        th.start()
-        print("Threads:", threading.active_count())'''
-    #s.close()
+    s.close()
 
 def broadcast_table():
-    #lock.acquire()
-    print("table broacasted\n", tabulate(table))
     pkl = pickle.dumps(table)
-
     for client in clients:
+
         sock, addr = client[0], client[1]
         print("broadcasting to " + str(addr))
         sock.sendall(b"tab\n" + pkl)
         '''buf = sock.recv(3)
         print("response from broadcast" , buf)'''
     print("broadcast done")
-    
-    #lock.release()
-
 
 def new_client(connSock, addr, lock):
-    global buf
     while True:
-        buf = connSock.recv(4)
-        # Stop threads to proceess input one client at time
-        lock.acquire()
-
-        if not buf:
+        try:
+            buf = connSock.recv(4).decode()
+        except ConnectionResetError:
             close_conn(connSock)
             break
-        
-        buf = buf.decode()
+
+        if buf == "":
+            close_conn(connSock)
+            break
+
+        # Stop threads to proceess input one client at time
+        lock.acquire()
         print("from " +str(addr)+ ":", buf)
 
         if buf == "reg\n":
             register(connSock, addr)
-            broadcast_table()
-
-        '''elif response[0:6] == "der\n":
-            name = connSock.recv(1024).decode()
-            print(name)
-            if dereg(connSock, name):
-                connSock.sendall(b"OK")'''
+        elif buf == "der\n":
+            if dereg(connSock):
+                connSock.sendall(b"OK")
+                
         lock.release()
 
 
 def register(connSock, addr):
-    #lock.acquire()
-    buf = name = connSock.recv(1024).decode()
+    name = connSock.recv(1024).decode()
     print("registering", name)
     clients.append((connSock, addr, name))
     
@@ -96,7 +76,6 @@ def register(connSock, addr):
             table[i][3] = "yes"
             print("update registration\n", tabulate(table))
             connSock.sendall(b"OK")
-            lock.release()
             return
     
     # If client new, add entry to table
@@ -104,13 +83,15 @@ def register(connSock, addr):
     table.append(entry)
     print("new registration\n", tabulate(table))
     connSock.sendall(b"OK")
-    #lock.release()
+    broadcast_table()
     
-def dereg(connSock, name):
+def dereg(connSock):
+    name = connSock.recv(1024).decode()
+    print("Deregistering", name)
     for i in range(len(table)):
         if table[i][0] == name:
-            print("Deregistering " + name + " ...")
             table[i][3] = "no"
+            connSock.sendall(b"OK")
             broadcast_table()
             print(tabulate(table))
             return True
@@ -137,7 +118,7 @@ def client_ack(connSock, timeout=-1):
 def close_conn(connSock):
     lock.acquire()
     name = ""
-    for client in range(len(clients)):
+    for client in clients:
         if client[0] == connSock:
             name = client[2]
             clients.remove(client)

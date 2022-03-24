@@ -7,6 +7,7 @@ import threading
 table = [['name','ip','port','status']]
 lock = threading.Lock()
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+online = True
 
 def run(name, server_ip, server_port, client_port):
     sock.bind((socket.gethostname(), client_port))
@@ -17,19 +18,21 @@ def run(name, server_ip, server_port, client_port):
     receiving_th.start()
 
     while True:
-        print(">>> ", end="")
+        print(">>> ", end="", flush=True)
         data = input()
         if data == "dereg " + name:
             dereg(name)
         elif data == "reg " + name:
             register(name)
-        else:
-            next
 
 def receiving():
+    global online
     while True:
         msg = sock.recv(4).decode()
         lock.acquire()
+        if not online:
+            break
+        
         print("recv code:", msg)
         if msg == '':
             sock.close()
@@ -53,18 +56,27 @@ def table_updated():
             
 
 def register(name):
+    global online
+    lock.acquire()
     msg = "reg\n" + name
     sock.sendall(msg.encode())
-    register_ack = sock.recv(2).decode()
-    if register_ack == "OK":
-        print(">>> [Welcome, You are registered.]")
+    ack = sock.recv(2).decode()
+
+    if ack == "OK":
+        online = True
+        print(">>> [Welcome, You are registered.]", flush=True)
     else: 
-        print(">>> [Register failed]")
+        print(">>> [Register failed]", flush=True)
         sock.close()
+    lock.release()
 
 def dereg(name):
+    global online
+    lock.acquire()
     msg = "der\n" + name
     sock.sendall(msg.encode())
     response = sock.recv(2).decode()
     if response == "OK":
-        print(">>> [You are Offline. Bye.]")
+        online = False
+        print(">>> [You are Offline. Bye.]", flush=True)
+    lock.release()
