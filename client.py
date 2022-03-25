@@ -14,7 +14,7 @@ class Client:
     def __init__(self, name, server_ip, server_port, client_port):
         self.name = name
         self.server_addr = (server_ip, server_port)
-        self.client_port = client_port
+        self.port = client_port
 
         self.table = [['name','ip','port','status']]
         self.online = True
@@ -23,7 +23,7 @@ class Client:
         #self.dest = []
 
     def run(self):
-        sock.bind((socket.gethostname(), self.client_port))
+        sock.bind((socket.gethostname(), self.port))
         
         # starts thread for receiving msgs from server and other clients
         recv_th = threading.Thread(target=self.receive)
@@ -114,8 +114,7 @@ class Client:
         if len(self.dest) == 0:
             print(">>> [Recipient unknown.]")
             return
-        if True:
-        #if self.dest[3] == "no":
+        if self.dest[3] == "no":
             self.send_offline(msg)    # offline message
             return
         
@@ -128,13 +127,12 @@ class Client:
                 break
         
         if not self.acked:
-            print(">>> [No ACK from %s, message sent to server.]" % self.dest[0])
+            print(">>> [No ACK from %s, message sent to server.]" % self.dest[0], flush=True)
             self.send_offline(msg)
     
     def send_offline(self, msg):
         self.acked = False
         msg = "save\n" + self.dest[0] + "\n" + msg
-        print("sending server",msg)
         try:
             sock.sendto(msg.encode(), self.server_addr)
         except:
@@ -152,10 +150,10 @@ class Client:
             
             data = data.decode()
             if data == "OK":
-                print(">>> [Messages received by the server and saved]", end="", flush=True)
+                print(">>> [Messages received by the server and saved]", flush=True)
             elif data == "ERR":
 
-                print(">>> [Client %s exists!!]" % self.dest[0], end="", flush=True)
+                print(">>> [Client %s exists!!]" % self.dest[0], flush=True)
 
     # Receives udp msgs from other clients
     def process_client(self, buf, addr):
