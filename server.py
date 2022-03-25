@@ -3,12 +3,14 @@ import pickle
 import threading
 import select
 from tabulate import tabulate
+import time
 
 table = [['name','ip','port','status']]     # client table
 clients = []    # stores all connected clients as tuples: (clientSock, addr, name)
 host = "127.0.0.1"  
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 lock = threading.Lock()
+client_connected = True
 
 # Called by app.py to start server
 def run(server_port):
@@ -20,23 +22,44 @@ def run(server_port):
     while True:
         connSock, addr = s.accept()
         print(f"Connected by {addr}")
-        client_th = threading.Thread(target=new_client, args=(connSock, addr, lock,))
+        client_th = threading.Thread(target=recv_client, args=(connSock, addr, lock,))
         client_th.start()
 
     s.close()
 
+def check_client(connSock):
+    global client_connected
+    print("checking if", connSock, "still online")
+    client_connected = False
+    print("conn reset", connSock)
+    msg = b"err\n"
+    try:
+        connSock.sendall(msg)
+    except BrokenPipeError:
+        print("brokenpipe")
+        return False
 
-def new_client(connSock, addr, lock):
+    # Wait for ack from user
+    timeout = time.time() + 3
+    while time.time() < timeout:
+        if client_connected:
+            return True
+    print("conn reset no ack")
+    return False
+
+def recv_client(connSock, addr, lock):
+    global client_connected
     while True:
         try:
             buf = connSock.recv(4).decode()
             print(buf)
         except ConnectionResetError:
-            print("conn reset", connSock)
-            close_conn(connSock)
-            break
+            if not check_client(connSock):
+                close_conn(connSock)
+                break
 
         if buf == "":
+            print("empty msg disconnect")
             close_conn(connSock)
             break
 
@@ -46,16 +69,20 @@ def new_client(connSock, addr, lock):
 
         if buf == "reg\n":
             register(connSock, addr)
+        
         elif buf == "der\n":
             dereg(connSock)
-                
+        
+        elif buf == "err\n":
+            ack = connSock.recv(2).decode()
+            if ack:
+                client_connected
         lock.release()
 
 
 def register(connSock, addr):
     name = connSock.recv(1024).decode()
     print("registering", name)
-    clients.append((connSock, addr, name))
     
     # Check for client name in table
     for i in range(len(table)):
@@ -65,7 +92,8 @@ def register(connSock, addr):
             broadcast_table()
             return
     
-    # If client new, add entry to table
+    # If client new, add to list of clients and client table
+    clients.append((connSock, addr, name))
     entry = [name, addr[0], addr[1], 'yes']
     table.append(entry)
     print("new registration\n", tabulate(table))

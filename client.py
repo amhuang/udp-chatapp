@@ -34,6 +34,7 @@ def run(name, server_ip, server_port, client_port):
         print(">>>", end=" ", flush=True)
         cmd = input()
 
+        
         if len(cmd) > 5 and cmd[:5] == "send ":
             name, msg = clean_send(cmd[5:])
             send_chat(name, msg)
@@ -61,24 +62,29 @@ def recv_server():
     global online
     while True:
         if online:
-            msg = s.recv(4).decode()
+            buf = s.recv(4).decode()
             print("from recving:", msg)
             lock.acquire()
             
-            if msg == '':   # Server disconnected
+            if buf == '':   # Server disconnected
                 s.close()
                 break 
 
-            if msg == "tab\n":
+            if buf == "tab\n":
                 table_updated()
             
-            elif msg == "der\n":
+            elif buf == "der\n":
                 ack = s.recv(2).decode()
                 print("recieved dereg ack", ack)
                 if ack == "OK":
                     online = False
+
+            elif buf == "err\n":
+                s.sendall(b"err\nOK")
+
             else: 
-                msg = s.recv(1024)
+                buf = s.recv(1024)
+                
             lock.release()
 
 def recv_chat():
@@ -131,7 +137,7 @@ def dereg_timeout(name):
         
     # Attempt to send dereg 5 times
     timeout = 1
-    
+    send_dereg()
     for i in range(5):
         t = threading.Timer(timeout, send_dereg)
         t.start()
@@ -140,7 +146,7 @@ def dereg_timeout(name):
             if not online:
                 t.cancel()
                 break
-        print("retrying dereg", i+1)
+        print("retrying dereg", i+2)
         if not online:
             break
     
@@ -169,11 +175,13 @@ def clean_send(data, group=False):
         return data.strip()
 
     # Returns name and msg for direct chats
-    name, msg = data.split(" ", 1)
-    name = name.strip()
-    msg = msg.strip()
+    data = data.split(" ", 1)
+    if len(data) != 2:
+        print(">>> [Please specify a message and a recipient.]")
+    name = data[0].strip()
+    msg = data[1].strip()
     if len(name) == 0:
-        print(">>> [Please specify a user to chat with.]")
+        print(">>> [Please specify a recipient.]")
     if len(msg) == 0:
         print(">>> [Please enter a message to send.]")
     return name, msg
