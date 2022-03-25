@@ -45,16 +45,19 @@ class chatCommand(click.Command):
 @click.argument("server-port", required=False, type=int)    # arg for server mode
 @click.argument("client-port", required=False, type=int)
 def cli(s, c, name, server_ip, server_port, client_port): # name, server_ip,
-    '''
+    """
+    \b
     Required for server mode:
     SERVER_PORT     The port the server is listening on.
 
+    \b
     Required for client mode:
     NAME            The client name.
     SERVER_IP       The server's IP address.
     SERVER_PORT     The port the server is listening on.
     CLIENT_PORT     The port the client is listening on.
-    '''
+    """
+    
     if s and not c:
         server.run(server_port)
     elif c and not s:

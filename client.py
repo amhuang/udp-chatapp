@@ -22,12 +22,13 @@ def run(name, server_ip, server_port, client_port):
     receiving_th = threading.Thread(target=receiving, args=())
     receiving_th.start()
 
+    # Loop for processing incoming messages
     while True:
         print(">>> ", end="", flush=True)
         data = input()
         if data == "dereg " + name and online:
             print("deregistering", name)
-            dereg(name)
+            dereg_timeout(name)
             
         elif data == "reg " + name:
             if not online:
@@ -36,6 +37,10 @@ def run(name, server_ip, server_port, client_port):
             else:
                 print(">>> [Client already registered.]")
 
+        else:
+            print('''help''')
+
+# Run by receiving_thread
 def receiving():
     global online, exit
     while True:
@@ -86,7 +91,7 @@ def register(name):
     # Releases lock acquired when deregistering
     lock.release()
 
-def dereg(name):
+def dereg_timeout(name):
     global online, exit
     msg = ("der\n" + name).encode()
 
