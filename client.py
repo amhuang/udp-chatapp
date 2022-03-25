@@ -12,6 +12,8 @@ lock = threading.Lock()
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 online = True
+msg_ack = False
+recipient = []
 
 def run(name, server_ip, server_port, client_port):
     global online
@@ -24,7 +26,7 @@ def run(name, server_ip, server_port, client_port):
     server_comm.start()
 
     # starts thread for direct chat
-    dir_chat = threading.Thread(target=recv_chat, args=())
+    dir_chat = threading.Thread(target=recv_client, args=())
     dir_chat.start()
 
     register(name)
@@ -33,14 +35,15 @@ def run(name, server_ip, server_port, client_port):
     while True:
         print(">>>", end=" ", flush=True)
         cmd = input()
-
         
         if len(cmd) > 5 and cmd[:5] == "send ":
-            name, msg = clean_send(cmd[5:])
-            send_chat(name, msg)
+            print(cmd[5:])
+            name, msg = clean_input(cmd[5:])
+            if name and msg:
+                send_chat(name, msg)
         
         elif len(cmd) > 9 and cmd[0:9] == "send_all ":
-            name = clean_send(cmd[9:], group=True)
+            name = clean_input(cmd[9:], group=True)
 
         elif cmd == "dereg " + name and online:
             print("deregistering", name)
@@ -57,13 +60,13 @@ def run(name, server_ip, server_port, client_port):
             print(help_msg)
 
 
-# Run by server_comm thread. Processes messages from server
+# Run by server_comm thread. Processes TCP messages from server
 def recv_server():
     global online
     while True:
         if online:
             buf = s.recv(4).decode()
-            print("from recving:", msg)
+            print("from recving:", buf)
             lock.acquire()
             
             if buf == '':   # Server disconnected
@@ -75,7 +78,6 @@ def recv_server():
             
             elif buf == "der\n":
                 ack = s.recv(2).decode()
-                print("recieved dereg ack", ack)
                 if ack == "OK":
                     online = False
 
@@ -84,46 +86,71 @@ def recv_server():
 
             else: 
                 buf = s.recv(1024)
-                
+
             lock.release()
 
-def recv_chat():
+# Receives UDP from other clients
+def recv_client():
+    global recipient, msg_ack
     while True:
         buf, addr = udp.recvfrom(1024)
-        for row in table:
-            if row[1] == addr[0] and row[2] == addr[1]:
-                print(row[0], end=": ")
-        print(buf.decode())
+        buf = buf.decode()
+        print("udp recvd", buf)
+
+        if buf == "ack\n" and recipient[1] == addr[0] and recipient[2] == addr[1]:
+            msg_ack = True
+        elif len(buf) > 4 and buf[0:4] == "msg\n":
+            new_chat(buf[4:], addr)
+
         print(">>>", end=" ", flush=True)
 
+def new_chat(msg, addr):
+    udp.sendto(b"ack\n", addr)      # ack message received
+    for row in table:
+        if row[1] == addr[0] and row[2] == addr[1]:
+            print(row[0], end=": ")
+    print(msg)
+    
+
 def send_chat(name, msg):
-    recipient = []
+    global msg_ack, recipient
+    lock.acquire()
+    msg_ack = False
+    
     for row in table:
         if row[0] == name:
             recipient = row
 
     if recipient == []:
         print(">>> [Recipient not found.]")
+        lock.release()
         return
-    elif recipient[3] == "no":
-        pass
     
-    msg = msg.encode()
+    elif recipient[3] == "no":
+        pass    # offline message
+    
+    msg = b"msg\n" + msg.encode()
     udp.sendto(msg, (recipient[1], recipient[2]))
-    print("message sent to", str((recipient[1], recipient[2])))
+    timeout = time.time() + 0.5
+    while time.time() < timeout:
+        if msg_ack:
+            print("message sent to", str((recipient[1], recipient[2])))
+            break
+    if not msg_ack:
+        print("message not delivered")
+    
+    lock.release()
+            
+
 
 def register(name):
     global online
     online = True
 
     lock.acquire()
-    print("Registering", name)
     msg = "reg\n" + name
     s.sendall(msg.encode())
     print(">>> [Welcome, You are registered.]", flush=True)
-    '''else: 
-        print(">>> [Register failed]", flush=True)
-        s.close()'''
     # Releases lock acquired when deregistering
     lock.release()
 
@@ -141,8 +168,8 @@ def dereg_timeout(name):
     for i in range(5):
         t = threading.Timer(timeout, send_dereg)
         t.start()
-        retry = time.time() + timeout
-        while time.time() < retry:
+        timeout = time.time() + 0.5
+        while time.time() < timeout:
             if not online:
                 t.cancel()
                 break
@@ -169,19 +196,22 @@ def table_updated():
     print(">>>", end=" ", flush=True)
 
 
-def clean_send(data, group=False):
+def clean_input(data, group=False):
     # strips whitespace off name for group chats
     if group:
         return data.strip()
 
     # Returns name and msg for direct chats
-    data = data.split(" ", 1)
+    data = data.strip().split(" ", 1)
     if len(data) != 2:
         print(">>> [Please specify a message and a recipient.]")
+        return None, None
     name = data[0].strip()
     msg = data[1].strip()
     if len(name) == 0:
         print(">>> [Please specify a recipient.]")
+        return None, None
     if len(msg) == 0:
         print(">>> [Please enter a message to send.]")
+        return None, None
     return name, msg

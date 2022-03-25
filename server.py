@@ -110,8 +110,7 @@ def dereg(connSock):
     for i in range(len(table)):
         if table[i][0] == name:
             table[i][3] = "no"
-            connSock.sendall(b"der\n")
-            connSock.sendall(b"OK")
+            connSock.sendall(b"der\nOK")
             print("Successful dereg of", name)
             broadcast_table()
             print(tabulate(table))
