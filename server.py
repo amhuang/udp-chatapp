@@ -4,15 +4,11 @@ import threading
 import select
 from tabulate import tabulate
 
-table = [['name','ip','port','status']]
-table_updated = False     
-ThreadCount = 0
-host = "127.0.0.1"  #socket.gethostname()
+table = [['name','ip','port','status']]     # client table
+clients = []    # stores all connected clients as tuples: (clientSock, addr, name)
+host = "127.0.0.1"  
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-clients = []
-buf = ""
 lock = threading.Lock()
-
 
 # Called by app.py to start server
 def run(server_port):
@@ -29,22 +25,14 @@ def run(server_port):
 
     s.close()
 
-def broadcast_table():
-    pkl = pickle.dumps(table)
-    for client in clients:
-
-        sock, addr = client[0], client[1]
-        print("broadcasting to " + str(addr))
-        sock.sendall(b"tab\n" + pkl)
-        '''buf = sock.recv(3)
-        print("response from broadcast" , buf)'''
-    print("broadcast done")
 
 def new_client(connSock, addr, lock):
     while True:
         try:
             buf = connSock.recv(4).decode()
+            print(buf)
         except ConnectionResetError:
+            print("conn reset", connSock)
             close_conn(connSock)
             break
 
@@ -59,8 +47,7 @@ def new_client(connSock, addr, lock):
         if buf == "reg\n":
             register(connSock, addr)
         elif buf == "der\n":
-            if dereg(connSock):
-                connSock.sendall(b"OK")
+            dereg(connSock)
                 
         lock.release()
 
@@ -75,46 +62,46 @@ def register(connSock, addr):
         if table[i][0] == name:
             table[i][3] = "yes"
             print("update registration\n", tabulate(table))
-            connSock.sendall(b"OK")
+            broadcast_table()
             return
     
     # If client new, add entry to table
     entry = [name, addr[0], addr[1], 'yes']
     table.append(entry)
     print("new registration\n", tabulate(table))
-    connSock.sendall(b"OK")
     broadcast_table()
     
+'''
+Deregisters client by marking them as offline in the client table.
+Reads client name to be deregistered from buffer, ACKs dereg msg,
+broadcasts changes.
+'''
 def dereg(connSock):
     name = connSock.recv(1024).decode()
     print("Deregistering", name)
     for i in range(len(table)):
         if table[i][0] == name:
             table[i][3] = "no"
+            connSock.sendall(b"der\n")
             connSock.sendall(b"OK")
+            print("Successful dereg of", name)
             broadcast_table()
             print(tabulate(table))
-            return True
-    return False
 
-def client_ack(connSock, timeout=-1):
-    response = connSock.recv(2).decode()
-    print("response from broadcast" , response)
-    if response == "OK":
-        return True
+def broadcast_table():
+    global clients
+    pkl = pickle.dumps(table)
+    for client in clients:
+        sock, addr = client[0], client[1]
+        print("broadcasting to " + str(addr))
+        sock.sendall(b"tab\n")
+        sock.sendall(pkl)
+    print("broadcast done")
 
-    '''if timeout > 0:
-        ready = select.select([connSock], [], [], timeout)
-        if ready[0]:
-            response = connSock.recv(2).decode()
-            connSock.setblocking(1)
-            if response == "OK":
-                return True
-    else: '''
-        
-        
-    return False
-
+'''
+Close connection and removes client data if client disconnects
+or leaves silently.
+'''
 def close_conn(connSock):
     lock.acquire()
     name = ""
@@ -122,8 +109,13 @@ def close_conn(connSock):
         if client[0] == connSock:
             name = client[2]
             clients.remove(client)
-    for row in table:
-        if row[0] == name:
-            row[3] = "no"
-    lock.release()
+            break
+    for i in range(len(table)):
+        if table[i][0] == name:
+            del table[i]
+            break
+    print(name, " disconnected.")
+    print(tabulate(table))
     connSock.close()
+    lock.release()
+    

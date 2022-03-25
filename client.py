@@ -3,13 +3,18 @@ import pickle
 from tabulate import tabulate
 import select
 import threading
+import time
+
+import sys
 
 table = [['name','ip','port','status']]
 lock = threading.Lock()
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-online = True
+online = False
+exit = False
 
 def run(name, server_ip, server_port, client_port):
+    global online
     sock.bind((socket.gethostname(), client_port))
     sock.connect((server_ip, server_port))
     register(name)
@@ -20,63 +25,94 @@ def run(name, server_ip, server_port, client_port):
     while True:
         print(">>> ", end="", flush=True)
         data = input()
-        if data == "dereg " + name:
+        if data == "dereg " + name and online:
+            print("deregistering", name)
             dereg(name)
+            
         elif data == "reg " + name:
-            register(name)
+            if not online:
+                print("registering", name)
+                register(name)
+            else:
+                print(">>> [Client already registered.]")
 
 def receiving():
-    global online
+    global online, exit
     while True:
-        msg = sock.recv(4).decode()
-        lock.acquire()
-        if not online:
-            break
-        
-        print("recv code:", msg)
-        if msg == '':
-            sock.close()
-            break 
 
-        if msg == "tab\n":
-            table_updated()
-        else: 
-            msg = sock.recv(1024)
-        lock.release()
+        if online:
+            msg = sock.recv(4).decode()
+            if exit: 
+                sys.exit(1)
+                
+            print("from recving:", msg)
+            lock.acquire()
+            
+            if msg == '':   # Server disconnected
+                sock.close()
+                break 
+
+            if msg == "tab\n":
+                table_updated()
+            elif msg == "der\n":
+                ack = sock.recv(2).decode()
+                print("recieved dereg ack", ack)
+                if ack == "OK":
+                    online = False
+            else: 
+                msg = sock.recv(1024)
+            lock.release()
+            print("recv lock released")
 
 def table_updated():
     msg = sock.recv(1024)
-    print("recv from tab thread:", msg)
     table = pickle.loads(msg)
-    #sock.sendall(b"OK")
-    #print("sent OK")
     print(">>> [Client table updated.]")
     print(tabulate(table))
-    print(">>> ", end="", flush=True)
             
 
 def register(name):
     global online
+    online = True
+
     lock.acquire()
+    print("Registering", name)
     msg = "reg\n" + name
     sock.sendall(msg.encode())
-    ack = sock.recv(2).decode()
-
-    if ack == "OK":
-        online = True
-        print(">>> [Welcome, You are registered.]", flush=True)
-    else: 
+    print(">>> [Welcome, You are registered.]", flush=True)
+    '''else: 
         print(">>> [Register failed]", flush=True)
-        sock.close()
+        sock.close()'''
+    # Releases lock acquired when deregistering
     lock.release()
 
 def dereg(name):
-    global online
-    lock.acquire()
-    msg = "der\n" + name
-    sock.sendall(msg.encode())
-    response = sock.recv(2).decode()
-    if response == "OK":
-        online = False
+    global online, exit
+    msg = ("der\n" + name).encode()
+
+    def send_dereg():
+        sock.sendall(msg)
+        
+    # Attempt to send dereg 5 times
+    timeout = 1
+    
+    for i in range(5):
+        t = threading.Timer(timeout, send_dereg)
+        t.start()
+        retry = time.time() + timeout
+        while time.time() < retry:
+            if not online:
+                t.cancel()
+                break
+        print("retrying dereg", i+1)
+        if not online:
+            break
+    
+    if not online:
         print(">>> [You are Offline. Bye.]", flush=True)
-    lock.release()
+    else: 
+        print(">>> [Server not responding]", flush=True)
+        print(">>> [Exiting]", flush=True)
+        sock.close()
+        exit = True
+        sys.exit(1)
