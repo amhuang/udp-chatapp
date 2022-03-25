@@ -1,7 +1,7 @@
 import click
 import subprocess
 import server
-import client
+from client import Client
 import ipaddress
 import sys
 
@@ -34,11 +34,12 @@ class ChatApp:
             server_ip = sys.argv[3]
             server_port = int(sys.argv[4])
             client_port = int(sys.argv[5])
-            self.validate_name()
+            self.validate_name(name)
             self.validate_ip(server_ip)
             self.validate_port(server_port)
             self.validate_port(client_port)
-            client.run(name, server_ip, server_port, client_port)
+            client = Client(name, server_ip, server_port, client_port)
+            client.run()
         
         else:
             print("Usage: python3 ChatApp.py <mode> <args>")
