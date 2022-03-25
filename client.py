@@ -4,22 +4,23 @@ from tabulate import tabulate
 import select
 import threading
 import time
-
 import sys
 
-table = [['name','ip','port','status']]
+s_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+c_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 lock = threading.Lock()
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+table = [['name','ip','port','status']]
 online = True
 msg_ack = False
+
 recipient = []
 
 def run(name, server_ip, server_port, client_port):
     global online
-    udp.bind((socket.gethostname(), client_port))
-    s.bind((socket.gethostname(), client_port))
-    s.connect((server_ip, server_port))
+    c_sock.bind((socket.gethostname(), client_port))
+    s_sock.bind((socket.gethostname(), client_port))
+    s_sock.connect((server_ip, server_port))
     
     # starts thread for receiving msgs from server
     server_comm = threading.Thread(target=recv_server)
@@ -33,14 +34,12 @@ def run(name, server_ip, server_port, client_port):
 
     # Processes user input
     while True:
-        print(">>>", end=" ", flush=True)
-        cmd = input()
+        cmd = input(">>> ")
         
         if len(cmd) > 5 and cmd[:5] == "send ":
-            print(cmd[5:])
             name, msg = clean_input(cmd[5:])
             if name and msg:
-                send_chat(name, msg)
+                send_msg(name, msg)
         
         elif len(cmd) > 9 and cmd[0:9] == "send_all ":
             name = clean_input(cmd[9:], group=True)
@@ -65,82 +64,131 @@ def recv_server():
     global online
     while True:
         if online:
-            buf = s.recv(4).decode()
+            try:
+                buf = s_sock.recv(4).decode()
+            except ConnectionResetError:
+                print("recv server err")
+                server_disconnect()
+
             print("from recving:", buf)
             lock.acquire()
             
             if buf == '':   # Server disconnected
-                s.close()
+                s_sock.close()
                 break 
 
+            # Updated table
             if buf == "tab\n":
                 table_updated()
             
+            # Deregister ack (successful)
             elif buf == "der\n":
-                ack = s.recv(2).decode()
+                ack = s_sock.recv(2).decode()
                 if ack == "OK":
                     online = False
+            
+            # Receive saved messages or acks for saving msgs
+            elif buf == "sav\n":
+                recv_saved()
 
+            # Error message from server
             elif buf == "err\n":
-                s.sendall(b"err\nOK")
-
+                server_error()
             else: 
-                buf = s.recv(1024)
+                buf = s_sock.recv(1024)
 
             lock.release()
 
-# Receives UDP from other clients
+# Receives udp msgs from other clients
 def recv_client():
-    global recipient, msg_ack
+    global recipient, msg_ack, online
     while True:
-        buf, addr = udp.recvfrom(1024)
-        buf = buf.decode()
-        print("udp recvd", buf)
+        buf, addr = c_sock.recvfrom(1024)
+        if online:
+            buf = buf.decode()
+            print("udp recvd", buf)
 
-        if buf == "ack\n" and recipient[1] == addr[0] and recipient[2] == addr[1]:
-            msg_ack = True
-        elif len(buf) > 4 and buf[0:4] == "msg\n":
-            new_chat(buf[4:], addr)
+            # ack for a message just sent
+            if buf == "ack\n" and recipient[1] == addr[0] and recipient[2] == addr[1]:
+                msg_ack = True
 
-        print(">>>", end=" ", flush=True)
+            # receive new message
+            elif len(buf) > 4 and buf[0:4] == "msg\n":
+                recv_msg(buf[4:], addr)
 
-def new_chat(msg, addr):
-    udp.sendto(b"ack\n", addr)      # ack message received
+def recv_msg(msg, addr):
+    c_sock.sendto(b"ack\n", addr)      # ack message received
+    known = False
     for row in table:
         if row[1] == addr[0] and row[2] == addr[1]:
-            print(row[0], end=": ")
-    print(msg)
-    
+            print(row[0], ": ", msg, sep="")
+            known = True
+    if not known:
+        print("Unknown sender:", msg)
 
-def send_chat(name, msg):
+def recv_saved():
+    global recipient
+    buf = s_sock.recv(1024).decode()
+    print("server ack received", buf)
+    if buf == "OK":
+        print(">>> [Messages received by the server and saved]\n>>> ")
+    elif buf == "ERR":
+        print(">>> [Client %s exists!!]" % recipient[0])
+
+def server_error():
+    try:
+        s_sock.sendall(b"err\nOK")
+    except:
+        server_disconnect()
+
+
+def send_msg(name, msg):
     global msg_ack, recipient
+
     lock.acquire()
+    recipient = []
     msg_ack = False
     
+    # Check recipient status
     for row in table:
         if row[0] == name:
             recipient = row
-
-    if recipient == []:
-        print(">>> [Recipient not found.]")
+    if len(recipient) == 0:
+        print(">>> [Recipient unknown.]")
+        lock.release()
+        return
+    if True:
+    #if recipient[3] == "no":
+        save_msg(msg)    # offline message
         lock.release()
         return
     
-    elif recipient[3] == "no":
-        pass    # offline message
-    
-    msg = b"msg\n" + msg.encode()
-    udp.sendto(msg, (recipient[1], recipient[2]))
+    msg_bytes = b"msg\n" + msg.encode()
+    c_sock.sendto(msg_bytes, (recipient[1], recipient[2]))
     timeout = time.time() + 0.5
     while time.time() < timeout:
         if msg_ack:
             print("message sent to", str((recipient[1], recipient[2])))
             break
-    if not msg_ack:
-        print("message not delivered")
     
+    if msg_ack:
+        print(">>> [Message received by %s.]" % recipient[0])
+    else:
+        print(">>> [No ACK from %s, message sent to server.]" % recipient[0])
+        save_msg(msg)
     lock.release()
             
+def save_msg(msg):
+    global recipient, msg_ack
+    msg_ack = False
+
+    msg = "sav\n" + recipient[0] + "\n" + msg
+    print("sending server",msg)
+    
+    try:
+        s_sock.sendall(msg.encode())
+    except:
+        server_disconnect()
 
 
 def register(name):
@@ -149,7 +197,10 @@ def register(name):
 
     lock.acquire()
     msg = "reg\n" + name
-    s.sendall(msg.encode())
+    try:
+        s_sock.sendall(msg.encode())
+    except:
+        server_disconnect()
     print(">>> [Welcome, You are registered.]", flush=True)
     # Releases lock acquired when deregistering
     lock.release()
@@ -157,10 +208,12 @@ def register(name):
 
 def dereg_timeout(name):
     global online
-    msg = ("der\n" + name).encode()
-
+    msg = b"der\n" + name.encode()
     def send_dereg():
-        s.sendall(msg)
+        try:
+            s_sock.sendall(msg)
+        except:
+            server_disconnect()
         
     # Attempt to send dereg 5 times
     timeout = 1
@@ -174,27 +227,28 @@ def dereg_timeout(name):
                 t.cancel()
                 break
         print("retrying dereg", i+2)
-        if not online:
+        if not online:  # dereg attempt successful
             break
     
     if not online:
         print(">>> [You are Offline. Bye.]", flush=True)
     else: 
-        print(">>> [Server not responding]", flush=True)
-        print(">>> [Exiting]", flush=True)
-        s.close()
-        exit = True
-        sys.exit(1)
+        server_disconnect()
 
 
 def table_updated():
     global table
-    msg = s.recv(1024)
+    msg = s_sock.recv(1024)
     table = pickle.loads(msg)
     print(">>> [Client table updated.]")
     print(tabulate(table))
     print(">>>", end=" ", flush=True)
 
+def server_disconnect():
+    print(">>> [Server not responding]", flush=True)
+    print(">>> [Exiting]", flush=True)
+    s_sock.close()
+    exit(1)
 
 def clean_input(data, group=False):
     # strips whitespace off name for group chats

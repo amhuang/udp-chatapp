@@ -20,6 +20,9 @@ class chatCommand(click.Command):
         elif args[0] == "-c":
             if len(args) != 5:
                 raise click.UsageError("Client name, server IP address, server’s listening port number, and client's listening port number are required.")
+            if not args[1].isalnum():
+                raise click.UsageError("Client name can only include alphanumeric characters.")
+
             self.valid_ip(args[2])
             self.valid_port(args[3]) # Validate server port
             self.valid_port(args[4]) # Validate client port
@@ -64,4 +67,4 @@ def cli(s, c, name, server_ip, server_port, client_port): # name, server_ip,
         #client = Client()
         client.run(name, server_ip, server_port, client_port)
     else: 
-        click.echo("Please specify client or server mode to run the chatapp")
+        click.echo("Please specify client or server mode to run the chatapp.")

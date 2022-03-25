@@ -5,83 +5,92 @@ import select
 from tabulate import tabulate
 import time
 
-table = [['name','ip','port','status']]     # client table
+table = [['name','ip','port','status'], ['b','10.162.0.2',7003,'yes']]     # client table
 clients = []    # stores all connected clients as tuples: (clientSock, addr, name)
+saved_msgs = {}
 host = "127.0.0.1"  
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 lock = threading.Lock()
-client_connected = True
+client_connected = True     # true when acks received from client
 
 # Called by app.py to start server
 def run(server_port):
-    s.bind((host, server_port))
-    s.listen()
+    s_sock.bind((host, server_port))
+    s_sock.listen()
     print("Server is listening...")
 
     # Listen for new connections
     while True:
-        connSock, addr = s.accept()
+        c_sock, addr = s_sock.accept()
         print(f"Connected by {addr}")
-        client_th = threading.Thread(target=recv_client, args=(connSock, addr, lock,))
+        client_th = threading.Thread(target=recv_client, args=(c_sock, addr,))
         client_th.start()
 
-    s.close()
+    s_sock.close()
 
-def check_client(connSock):
-    global client_connected
-    print("checking if", connSock, "still online")
-    client_connected = False
-    print("conn reset", connSock)
-    msg = b"err\n"
-    try:
-        connSock.sendall(msg)
-    except BrokenPipeError:
-        print("brokenpipe")
-        return False
-
-    # Wait for ack from user
-    timeout = time.time() + 3
-    while time.time() < timeout:
-        if client_connected:
-            return True
-    print("conn reset no ack")
-    return False
-
-def recv_client(connSock, addr, lock):
+def recv_client(c_sock, addr):
     global client_connected
     while True:
         try:
-            buf = connSock.recv(4).decode()
+            buf = c_sock.recv(4).decode()
             print(buf)
         except ConnectionResetError:
-            if not check_client(connSock):
-                close_conn(connSock)
+            if not check_client(c_sock):
+                close_conn(c_sock)
                 break
 
         if buf == "":
             print("empty msg disconnect")
-            close_conn(connSock)
+            close_conn(c_sock)
             break
 
         # Stop threads to proceess input one client at time
         lock.acquire()
         print("from " +str(addr)+ ":", buf)
 
+        # Register client
         if buf == "reg\n":
-            register(connSock, addr)
+            register(c_sock, addr)
         
+        # Deregister client
         elif buf == "der\n":
-            dereg(connSock)
+            dereg(c_sock)
+
+        # Offline message to be saved
+        elif buf == "sav\n":
+            save_msg(c_sock, addr)
         
+        # ack from client to confirm still connected
         elif buf == "err\n":
-            ack = connSock.recv(2).decode()
-            if ack:
-                client_connected
+            ack = c_sock.recv(2).decode()
+            if ack == "OK":
+                client_connected = True
+
         lock.release()
 
+def save_msg(c_sock, addr):
+    buf = c_sock.recv(1024).decode()
+    
+    recipient, msg = buf.split("\n", 1)
 
-def register(connSock, addr):
-    name = connSock.recv(1024).decode()
+    for row in table:
+        if row[1] == addr[0] and row[2] == addr[1]:
+            sender = row[0]
+            c_sock.sendall(b"sav\nOK")  # ack msg saved
+        if row[0] == recipient and row[3] == "yes":
+            c_sock.sendall(b"sav\nERR")  # recipient still active
+            return
+
+    print("saving message from", sender, "to", recipient, "\t", msg)
+
+    if recipient not in saved_msgs:
+        saved_msgs[recipient] = []  
+    saved_msgs[recipient].append((sender, time.time(), msg))
+    print(saved_msgs)
+    
+
+def register(c_sock, addr):
+    name = c_sock.recv(1024).decode()
     print("registering", name)
     
     # Check for client name in table
@@ -93,7 +102,7 @@ def register(connSock, addr):
             return
     
     # If client new, add to list of clients and client table
-    clients.append((connSock, addr, name))
+    clients.append((c_sock, addr, name))
     entry = [name, addr[0], addr[1], 'yes']
     table.append(entry)
     print("new registration\n", tabulate(table))
@@ -104,13 +113,13 @@ Deregisters client by marking them as offline in the client table.
 Reads client name to be deregistered from buffer, ACKs dereg msg,
 broadcasts changes.
 '''
-def dereg(connSock):
-    name = connSock.recv(1024).decode()
+def dereg(c_sock):
+    name = c_sock.recv(1024).decode()
     print("Deregistering", name)
     for i in range(len(table)):
         if table[i][0] == name:
             table[i][3] = "no"
-            connSock.sendall(b"der\nOK")
+            c_sock.sendall(b"der\nOK")
             print("Successful dereg of", name)
             broadcast_table()
             print(tabulate(table))
@@ -125,15 +134,34 @@ def broadcast_table():
         sock.sendall(pkl)
     print("broadcast done")
 
+def check_client(c_sock):
+    global client_connected
+    print("checking if", c_sock, "still online")
+    client_connected = False
+    msg = b"err\n"
+    try:
+        c_sock.sendall(msg)
+    except BrokenPipeError:
+        print("brokenpipe")
+        return False
+
+    # Wait for ack from user
+    timeout = time.time() + 3
+    while time.time() < timeout:
+        if client_connected:
+            return True
+    print("conn reset no ack")
+    return False
+
 '''
 Close connection and removes client data if client disconnects
 or leaves silently.
 '''
-def close_conn(connSock):
+def close_conn(c_sock):
     lock.acquire()
     name = ""
     for client in clients:
-        if client[0] == connSock:
+        if client[0] == c_sock:
             name = client[2]
             clients.remove(client)
             break
@@ -141,8 +169,13 @@ def close_conn(connSock):
         if table[i][0] == name:
             del table[i]
             break
+    
+    if name in saved_msgs:
+        del saved_msgs[name]
+
     print(name, " disconnected.")
     print(tabulate(table))
-    connSock.close()
+    print(saved_msgs)
+    c_sock.close()
     lock.release()
     

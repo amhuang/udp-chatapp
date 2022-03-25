@@ -1,6 +1,6 @@
 # csee4119-pa1
  
-This command line application is created using setuptools and click libraries. Please follow the instructions to set up a virtual environment in the main directory in order to use the ```chatapp``` command line interface,
+This command line application is created using setuptools and click libraries. Please follow the instructions to set up a virtual environment in the project directory in order to use the ```chatapp``` command line interface:
 
 ```
 $ virtualenv venv
