@@ -4,6 +4,7 @@ import threading
 import select
 from tabulate import tabulate
 import time
+import datetime
 
 # client table. Data format: ['name','ip','port','status'],   
 
@@ -14,7 +15,7 @@ class Server:
     def __init__(self, server_port):
         self.ip = "127.0.0.1"  
         self.port = server_port
-        self.table = [['b','10.162.0.2',7003,'yes']] 
+        self.table = [['b','10.162.0.2',7001,'no']] 
         self.saved = {}
     
     def run(self):
@@ -45,6 +46,7 @@ class Server:
             if self.table[i][0] == name:
                 self.table[i][3] = "yes"
                 print("update registration\n", tabulate(self.table))
+                self.send_saved(addr, name)
                 self.broadcast_table()
                 return
         
@@ -77,8 +79,18 @@ class Server:
         print("saving message from", sender, "to", recipient, "\t", msg)
         if recipient not in self.saved:
             self.saved[recipient] = []  
-        self.saved[recipient].append((sender, time.time(), msg))
+        timestamp = datetime.datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        self.saved[recipient].append((sender, timestamp, msg))
         print(self.saved)
+
+    def send_saved(self, addr, name):
+        if name in self.saved:
+
+            sock.sendto(b"off\n|", addr)
+            for entry in self.saved[name]:
+                msg = "off\n" + entry[0] + ": [" + str(entry[1]) + "]  " + entry[2]
+                sock.sendto(msg.encode(), addr)
+            del self.saved[name]
 
     def broadcast_table(self):
         pkl = pickle.dumps(self.table)

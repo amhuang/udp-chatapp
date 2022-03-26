@@ -16,7 +16,7 @@ class Client:
         self.server_addr = (server_ip, server_port)
         self.port = client_port
 
-        self.table = [['name','ip','port','status']]
+        self.table = []     # Data format: ['name','ip', port,'status']
         self.online = True
         self.server_connected = True
         self.acked = False
@@ -35,6 +35,7 @@ class Client:
         # Processes user input
         while True:
             cmd = input(">>> ")
+
             if cmd == "dereg " + self.name and self.online:
                 print("deregistering", self.name)
                 self.deregister()
@@ -147,13 +148,16 @@ class Client:
             if data.decode() == "OK":
                 self.online = False
         elif head == "save":       # Receive saved messages or acks for saving msgs
-            
             data = data.decode()
             if data == "OK":
                 print(">>> [Messages received by the server and saved]", flush=True)
             elif data == "ERR":
-
                 print(">>> [Client %s exists!!]" % self.dest[0], flush=True)
+        elif head == "off":
+            if data == "|":
+                print("You Have Messages")
+            else:
+                print(">>> ", data.decode())
 
     # Receives udp msgs from other clients
     def process_client(self, buf, addr):
@@ -173,9 +177,6 @@ class Client:
         # ack for a message just sent
         elif head == "ok" and self.dest[1] == addr[0] and self.dest[2] == addr[1]:
             self.acked = True
-    
-    def process_saved(self, data):
-        global recipient
         
 
     def clean_msg(self, data, group=False):
@@ -201,9 +202,8 @@ class Client:
     
     def table_update(self, data):
         self.table = pickle.loads(data)
-        print(">>> [Client table updated.]")
-        print(tabulate(self.table))
-        print(">>>", end=" ", flush=True)
+        print("\n>>> [Client table updated.]", flush=True)
+        print(tabulate(self.table), flush=True)
     
     def quit(self):
         print(">>> [Server not responding]", flush=True)
