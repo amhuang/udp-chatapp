@@ -25,36 +25,32 @@ class Client:
     def run(self):
         sock.bind((socket.gethostname(), self.port))
         
-        # starts thread for receiving msgs from server and other clients
-        recv_th = threading.Thread(target=self.receive)
-        recv_th.start()
+        recv_th = threading.Thread(target=self.recv)
 
-        # Registers client
         self.register()
-        
-        # Processes user input
+        recv_th.start()
         self.process_input()
 
     def process_input(self):
         while True:
             cmd = input(">>> ")
             if cmd == "dereg " + self.name and self.online:
-                print("deregistering", self.name)
                 self.deregister()
                 
             elif cmd == "reg " + self.name:
                 if not self.online:
                     self.register()
                 else:
-                    print(">>> [Client already registered.]")
+                    print(">>> [Client already registered.]", flush=True)
             
             elif len(cmd) > 5 and cmd[:5] == "send ":
                 name, msg = self.clean_msg(cmd[5:])
                 if name and msg:
-                    self.send_msg(name, msg)
+                    self.send(name, msg)
             
             elif len(cmd) > 9 and cmd[0:9] == "send_all ":
-                name = clean_msg(cmd[9:], group=True)
+                msg = self.clean_msg(cmd[9:], group=True)
+                self.send_all(msg)
 
             elif cmd == "help":
                 help_msg = 'CHATAPP COMMANDS\n\tsend <name> <message>   Direct chat: end a message to one user\n\tsend_all <message>      Group chat: send message to all clients\n\tdereg <nickname>        Deregister (go offline)\n\treg <nickname>          Re-register (return online)'
@@ -70,32 +66,28 @@ class Client:
     def deregister(self):
         msg = b"dereg\n" + self.name.encode()
         def send_dereg():
-            try:
-                sock.sendto(msg, self.server_addr)
-            except:
-                print("sendto server failed")
+            sock.sendto(msg, self.server_addr)
             
         # Attempt to send dereg 5 times
-        timeout = 1
         send_dereg()
         for i in range(5):
-            t = threading.Timer(timeout, send_dereg)
+            t = threading.Timer(0.5, send_dereg)
             t.start()
             timeout = time.time() + 0.5
             while time.time() < timeout:
                 if not self.online:
                     t.cancel()
                     break
-            print("retrying dereg", i+2)
             if not self.online:  # dereg attempt successful
                 break
+            print("retrying dereg", i+2)
         
         if not self.online:
-            print(">>> [You are Offline. Bye.]", flush=True)
+            print(">>> [You are offline. Bye.]", flush=True)
         else: 
             self.quit()
 
-    def send_msg(self, name, msg):
+    def send(self, name, msg):
         self.dest = []
         self.acked = False
         
@@ -110,8 +102,8 @@ class Client:
             self.send_offline(msg)    # offline message
             return
         
-        msg_bytes = b"msg\n" + msg.encode()
-        sock.sendto(msg_bytes, (self.dest[1], self.dest[2]))
+        formatted = "msg\n" + self.name + "\n" + msg
+        sock.sendto(formatted.encode(), (self.dest[1], self.dest[2]))
         timeout = time.time() + 0.5
         while time.time() < timeout:
             if self.acked:
@@ -121,6 +113,30 @@ class Client:
         if not self.acked:
             print(">>> [No ACK from %s, message sent to server.]" % self.dest[0], flush=True)
             self.send_offline(msg)
+
+    def send_all(self, msg):
+        self.acked = False
+        formatted = "all\n" + self.name + "\n" + msg
+
+        def send_server():
+            sock.sendto(formatted.encode(), self.server_addr)
+        
+        # Up to 5 attempts to get an ack from server
+        send_server()
+        for i in range(5):
+            t = threading.Timer(0.5, send_server)
+            t.start()
+            timeout = time.time() + 0.5
+            while time.time() < timeout:
+                if self.acked:
+                    print(">>> [Message received by Server.]")
+                    t.cancel()
+                    break
+            if self.acked:  # sendall attempt successful
+                break
+            print("attempt", i, "at sendall")
+        if not self.acked:
+            print(">>> [Server not responding.]")
     
     def send_offline(self, msg):
         self.acked = False
@@ -131,57 +147,70 @@ class Client:
             self.quit()
     
     # Run by server_comm thread. Processes UDP messages from server
-    def receive(self):
+    def recv(self):
         while True:
-            buf, addr = sock.recvfrom(1024)
+            buf, addr = sock.recvfrom(2048)
             lock.acquire()
             if self.online and addr == self.server_addr:
-                self.process_server(buf)
+                self.recv_server(buf)
             elif self.online:
-                self.process_client(buf, addr)
+                self.recv_client(buf, addr)
             lock.release()
     
-    def process_server(self, buf):
+    def recv_server(self, buf):
         head, data = buf.split(b"\n", 1)
         head = head.decode()
-        if head == "table":      # Updated table
+
+        if head == "table":         
             self.table_update(data)
-        elif head == "dereg":        # Deregister ack (successful)
+        
+        elif head == "dereg":       # Server acks dereg (successful)  
             if data.decode() == "OK":
                 self.online = False
-        elif head == "save":       # Receive saved messages or acks for saving msgs
+        
+        elif head == "save":        # Receive saved messages, acks for saving msgs
             data = data.decode()
             if data == "OK":
-                print(">>> [Messages received by the server and saved]", flush=True)
+                print("[Messages received by the server and saved]\n>>>", flush=True)
             elif data == "ERR":
-                print(">>> [Client %s exists!!]" % self.dest[0], flush=True)
-        elif head == "off":
-            if data == "|":
-                print("You Have Messages")
+                print("[Client %s exists!!]" % self.dest[0], flush=True)
+            #print(">>> ", end="", flush=True)
+        
+        elif head == "stored":     # Saved messages upon returning online
+            data = data.decode()
+            if data == "|":        # indicates start of a batch of saved msgs
+                print("[You have messages]")
             else:
-                print(">>> ", data.decode())
-        elif head == "hello":
+                print(">>>", data)
+        
+        elif head == "all":  
+            data = data.decode()       
+            if data == "OK":        # Server acks send_all
+                self.acked = True
+            else:
+                ack = "all\n" + self.name + "\nOK"
+                sock.sendto(ack.encode(), self.server_addr)
+                sender, msg = data.split("\n", 1)
+                print("[Channel-Message %s: %s]" % (sender, msg))
+                print(">>> ", end="", flush=True)
+        
+        elif head == "hello":       # Server checking if client alive
             sock.sendto(b"hello\n", self.server_addr)
 
     # Receives udp msgs from other clients
-    def process_client(self, buf, addr):
+    def recv_client(self, buf, addr):
         head, data = buf.decode().split("\n", 1)
 
         # receive new message
         if head == "msg":
             sock.sendto(b"ok\n", addr)      # ack message received
             known = False
-            for row in self.table:
-                if row[1] == addr[0] and row[2] == addr[1]:
-                    print(row[0], ": ", data, sep="")
-                    known = True
-            if not known:
-                print("Unknown sender:", msg)
+            name, msg = data.split("\n", 1)
+            print(name, ": ", msg, "\n>>> ", sep="", end="")
 
         # ack for a message just sent
         elif head == "ok" and self.dest[1] == addr[0] and self.dest[2] == addr[1]:
             self.acked = True
-        
 
     def clean_msg(self, data, group=False):
         # strips whitespace off name for group chats
@@ -206,7 +235,7 @@ class Client:
     
     def table_update(self, data):
         self.table = pickle.loads(data)
-        print("\n>>> [Client table updated.]")
+        print("[Client table updated.]")
         print(tabulate(self.table))
         print(">>> ", end="", flush=True)
     
