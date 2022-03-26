@@ -33,9 +33,11 @@ class Client:
         self.register()
         
         # Processes user input
+        self.process_input()
+
+    def process_input(self):
         while True:
             cmd = input(">>> ")
-
             if cmd == "dereg " + self.name and self.online:
                 print("deregistering", self.name)
                 self.deregister()
@@ -93,17 +95,6 @@ class Client:
         else: 
             self.quit()
 
-    # Run by server_comm thread. Processes UDP messages from server
-    def receive(self):
-        while True:
-            buf, addr = sock.recvfrom(1024)
-            lock.acquire()
-            if addr == self.server_addr and self.online:
-                self.process_server(buf)
-            elif self.online:
-                self.process_client(buf, addr)
-            lock.release()
-
     def send_msg(self, name, msg):
         self.dest = []
         self.acked = False
@@ -121,7 +112,7 @@ class Client:
         
         msg_bytes = b"msg\n" + msg.encode()
         sock.sendto(msg_bytes, (self.dest[1], self.dest[2]))
-        timeout = time.time() + 3
+        timeout = time.time() + 0.5
         while time.time() < timeout:
             if self.acked:
                 print(">>> [Message received by %s.]" % self.dest[0])
@@ -138,6 +129,17 @@ class Client:
             sock.sendto(msg.encode(), self.server_addr)
         except:
             self.quit()
+    
+    # Run by server_comm thread. Processes UDP messages from server
+    def receive(self):
+        while True:
+            buf, addr = sock.recvfrom(1024)
+            lock.acquire()
+            if self.online and addr == self.server_addr:
+                self.process_server(buf)
+            elif self.online:
+                self.process_client(buf, addr)
+            lock.release()
     
     def process_server(self, buf):
         head, data = buf.split(b"\n", 1)
@@ -158,6 +160,8 @@ class Client:
                 print("You Have Messages")
             else:
                 print(">>> ", data.decode())
+        elif head == "hello":
+            sock.sendto(b"hello\n", self.server_addr)
 
     # Receives udp msgs from other clients
     def process_client(self, buf, addr):
@@ -202,8 +206,9 @@ class Client:
     
     def table_update(self, data):
         self.table = pickle.loads(data)
-        print("\n>>> [Client table updated.]", flush=True)
-        print(tabulate(self.table), flush=True)
+        print("\n>>> [Client table updated.]")
+        print(tabulate(self.table))
+        print(">>> ", end="", flush=True)
     
     def quit(self):
         print(">>> [Server not responding]", flush=True)

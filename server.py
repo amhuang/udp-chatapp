@@ -15,8 +15,9 @@ class Server:
     def __init__(self, server_port):
         self.ip = "127.0.0.1"  
         self.port = server_port
-        self.table = [['b','10.162.0.2',7001,'no']] 
+        self.table = [['b','10.162.0.2',7001,'yes']] 
         self.saved = {}
+        self.acked = False
     
     def run(self):
         sock.bind((self.ip, self.port))
@@ -29,15 +30,17 @@ class Server:
             if len(buf) < 4:
                 next
             
-            request, data = buf.decode().split("\n", 1)
-            print("from " +str(addr)+ ":", request, data)
+            action, data = buf.decode().split("\n", 1)
+            print("from " +str(addr)+ ":", action, data)
 
-            if request == "reg":      # Register client
+            if action == "reg":      # Register client
                 self.register(addr, data)
-            elif request == "dereg":    # Deregister client
+            elif action == "dereg":    # Deregister client
                 self.deregister(addr, data)
-            elif request == "save":    # Offline message to be saved
+            elif action == "save":    # Offline message to be saved
                 self.save_msg(addr, data)
+            elif action == "hello":
+                self.acked = True
     
     def register(self, addr, name):
         print("registering", name)
@@ -68,15 +71,27 @@ class Server:
 
     def save_msg(self, addr, data):
         recipient, msg = data.split("\n", 1)
-        for row in self.table:
-            if row[0] == recipient and row[3] == "yes":
-                sock.sendto(b"save\nERR", addr)  # recipient still active
-                return
-            if row[1] == addr[0] and row[2] == addr[1]:
-                sender = row[0]
-                sock.sendto(b"save\nOK", addr)  # ack msg saved
 
-        print("saving message from", sender, "to", recipient, "\t", msg)
+        for i in range(len(self.table)):
+            row = self.table[i]
+            sender = row[0]
+            if row[0] == recipient:
+                if row[3] == "no":
+                    sock.sendto(b"save\nOK", addr)  # ack msg saved
+                else:
+                    alive = self.client_alive(addr)
+                    if alive:   
+                        # Client table inaccurate. Abort save, send most recent table
+                        sock.sendto(b"save\nERR", addr)
+                        pkl = pickle.dumps(self.table)
+                        updated = b"table\n" + pkl
+                        sock.sendto(updated, addr)
+                        return
+                    else:  
+                        # Server table inaccurate. Update table, broadcast, and save msg     
+                        row[3] = "no"
+                        self.broadcast_table() 
+
         if recipient not in self.saved:
             self.saved[recipient] = []  
         timestamp = datetime.datetime.now().strftime("%m/%d/%Y %H:%M:%S")
@@ -97,12 +112,18 @@ class Server:
         msg = b"table\n" + pkl
         for row in self.table:
             addr = (row[1], row[2])
-            print(addr, msg)
             print("broadcasting to " + str(addr))
             sock.sendto(msg, addr)
         print("broadcast done")
 
-    
+    def client_alive(self, addr):
+        self.acked = False
+        sock.sendto(b"hello\n", addr)
+        timeout = time.time() + 1
+        while time.time() < timeout:
+            if self.acked:
+                return True
+        return False
 
         
 
