@@ -131,6 +131,99 @@ Sending message from x to channel: hi
 Test 4 Output
 ########################################
 
+CLIENT X
+>>> [Client table updated.] 
+>>> [Welcome, You are registered.] 
+>>> [Client table updated.] 
+>>> [Client table updated.] 
+>>> [Client table updated.] 
+>>> send_all hello
+>>> [Message received by Server.] 
+>>> [Client table updated.] 
+
+CLIENT Y
+>>> [Client table updated.] 
+>>> [Welcome, You are registered.] 
+>>> [Client table updated.] 
+>>> dereg y
+>>> [You are offline. Bye.] 
+>>> reg y
+>>> [Welcome, You are registered.] 
+>>> [Client table updated.] 
+>>> [You have messages] 
+>>> Channel-Message x: [03-27-2022 18:50:03] hello 
+>>> z: [03-27-2022 18:50:10] hi 
+
+CLIENT Z 
+>>> [Client table updated.] 
+>>> [Welcome, You are registered.] 
+>>> [Client table updated.] 
+>>> [Channel-Message x: hello] 
+>>> send y hi
+>>> [Messages received by the server and saved] 
+>>> [Client table updated.] 
+
+SERVER
+Server listening...
+Registered x
+Broadcasting client table
+Registered y
+Broadcasting client table
+Registered z
+Broadcasting client table
+Deregistered y
+Broadcasting client table
+Sending message from x to channel: hello
+Saving message for y: hello
+Saving message from  to y : hi
+Saving message for y: hi
+Broadcasting client table
+Client y returned online
+
 ########################################
 Test 5 Output
 ########################################
+
+CLIENT X
+>>> [Client table updated.] 
+>>> [Welcome, You are registered.] 
+>>> [Client table updated.] 
+>>> [Client table updated.] 
+>>> ^CTraceback (most recent call last):
+  File "ChatApp.py", line 71, in <module>
+    chatapp.run()
+  File "ChatApp.py", line 44, in run
+    c.run()
+  File "/home/andrea/csee4119-pa1/client.py", line 33, in run
+    self.process_input()
+  File "/home/andrea/csee4119-pa1/client.py", line 47, in process_input
+    cmd = input()
+KeyboardInterrupt
+
+
+CLIENT Y 
+>>> [Client table updated.] 
+>>> [Welcome, You are registered.] 
+>>> [Client table updated.] 
+>>> send_all hello
+>>> [Message received by Server.] 
+>>> [Client table updated.] 
+
+CLIENT Z 
+>>> [Client table updated.] 
+>>> [Welcome, You are registered.] 
+>>> [Channel-Message y: hello] 
+>>> [Client table updated.] 
+
+SERVER
+Server listening...
+Registered x
+Broadcasting client table
+Registered y
+Broadcasting client table
+Registered z
+Broadcasting client table
+Sending message from y to channel: hello
+Saving message for x: hello
+x unresponsive. Updating table, saving message: hello
+Broadcasting client table

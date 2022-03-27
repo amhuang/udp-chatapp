@@ -69,8 +69,9 @@ class Server:
     
     def deregister(self, addr, name):
         for i in range(len(self.table)):
-            if self.table[i][0] == name:
-                self.table[i][3] = "no"
+            row = self.table[i]
+            if row[0] == name:
+                row[3] = "no"
                 sock.sendto(b"dereg\nACK", addr)
                 print("Deregistered", name)
                 self.broadcast_table()
@@ -177,7 +178,7 @@ class Server:
                     table_updated = True
                     self.save_msg(name, sender, msg, channel=True)
                     self.table[rownum][3] = "no"
-                    print(msg, "unresponsive. Updating and broadcasting table, saving message:", msg)
+                    print(name, "unresponsive. Updating table, saving message:", msg)
         
         if table_updated:
             self.broadcast_table()
@@ -188,8 +189,9 @@ class Server:
         json_list = json.dumps(self.table)
         msg = b"table\n" + json_list.encode()
         for row in self.table:
-            addr = (row[1], row[2])
-            sock.sendto(msg, addr)
+            if row[3] == "yes":
+                addr = (row[1], row[2])
+                sock.sendto(msg, addr)
 
 
     def client_alive(self, addr):

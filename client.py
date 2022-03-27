@@ -20,11 +20,11 @@ class Client:
         self.online = False         # Online status from reg/dereg
         self.acked = False          # To communicate between receiving/sending threads
         self.receiving = False      # Blocks input proocessing while receiving a sequence of messages
-        self.prompt = False         # If prompt >>> has been printed
+        self.prompt = False         # Whether prompt >>> has been printed
 
     def run(self):
         sock.bind((socket.gethostname(), self.port))
-        print(">>> ", end="")
+        self.print()
         self.prompt = True
 
         recv_th = threading.Thread(target=self.recv)
@@ -52,6 +52,8 @@ class Client:
             if len(cmd) > 6 and cmd[:6] == "dereg ":
                 if cmd[6:].strip() == self.name and self.online:
                     self.deregister()
+                elif not self.online:
+                    self.print("[You are already deregistered.]")
                 else:
                     self.print("[You can only deregister yourself.]")
                 
