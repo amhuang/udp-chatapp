@@ -14,7 +14,7 @@ class Server:
     def __init__(self, server_port):
         self.ip = "127.0.0.1"  
         self.port = server_port
-        self.table = [['b','10.162.0.2',7001,'yes']] 
+        self.table = []#[['b','10.162.0.2',7001,'yes']] 
         self.saved = {}
     
     def run(self):
@@ -46,24 +46,32 @@ class Server:
         for i in range(len(self.table)):
             row = self.table[i]
             if row[0] == name:
+                # Client with different address trying to register w same name
+                if row[1] != addr[0] or row[2] != addr[1]:
+                    sock.sendto(b"reg\nERR", addr)
+                
+                # Client returning online
                 if row[3] == "no":
                     row[3] = "yes"
-                    row[1], row[2] = addr
-                    
-                    self.sendto(b"reg\OK", addr)
-                    self.send_saved(addr, name)
                     self.broadcast_table()
+                    self.send_saved(addr, name) 
                     print("Updated registration for", name)
-                    return
+                
+                # Client online but has same address (server table might not have known about it going offline)
+                elif row[1] == addr[0] and row[2] == addr[1]:
+                    self.broadcast_table()
+
                 else:
                     print("Client", name, "already online, aborting registration.")
                     sock.sendto(b"reg\nERR", addr)
-                    return
+                
+                return
         
         # If client new, add to list of clients and client self.table
         entry = [name, addr[0], addr[1], 'yes']
         self.table.append(entry)
         print("Registered", name)
+        sock.sendto(b"reg\nOK", addr)
         self.broadcast_table()
     
     def deregister(self, addr, name):
@@ -116,16 +124,17 @@ class Server:
             formatted = "Channel-Message " + sender + ": " + "[" +  ts + "] " + msg
         else:
             formatted = sender + ": " + "[" +  ts + "] " + msg
-        print("Saving message for", recipient, ":", msg)
+        print("Saving message for ", recipient, ": ", msg, sep="")
         self.saved[recipient].append(formatted)
 
 
     def send_saved(self, addr, name):
         if name in self.saved:
-            sock.sendto(b"stored\n|", addr)
+            sock.sendto(b"stored\n\t", addr)
             for entry in self.saved[name]:
                 msg = "stored\n" + entry
                 sock.sendto(msg.encode(), addr)
+            sock.sendto(b"stored\n\n", addr)
             del self.saved[name]
 
 
@@ -183,6 +192,7 @@ class Server:
 
 
     def broadcast_table(self):
+        print("Broadcasting client table")
         json_list = json.dumps(self.table)
         msg = b"table\n" + json_list.encode()
         for row in self.table:

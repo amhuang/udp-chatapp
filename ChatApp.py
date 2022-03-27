@@ -51,8 +51,8 @@ class ChatApp:
         if not name.isalnum():
             print("Client name must consist of alphanumeric characters.")
             sys.exit(1)
-        if not len(name) < 21:
-            print("Client name must be 20 characters long or less.")
+        if not len(name) <= 50:
+            print("Client name must be 50 characters long or less.")
             sys.exit(1)
 
     def validate_port(self, port):

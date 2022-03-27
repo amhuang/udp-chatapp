@@ -17,23 +17,25 @@ class Client:
         self.port = client_port
 
         self.table = []     # Data format: ['name','ip', port,'status']
-        self.online = True
+        self.online = False
         self.server_connected = True
         self.acked = False
+        self.receiving = False
         #self.dest = []
 
     def run(self):
         sock.bind((socket.gethostname(), self.port))
-        
+        print(">>> ", end="")
         recv_th = threading.Thread(target=self.recv)
-
-        self.register()
         recv_th.start()
+        self.register()
         self.process_input()
 
     def process_input(self):
         while True:
             cmd = input(">>> ")
+            if self.receiving:
+                continue
             if cmd == "dereg " + self.name and self.online:
                 self.deregister()
                 
@@ -58,15 +60,15 @@ class Client:
 
     def register(self):
         self.online = True
-        self.acked = False
         msg = "reg\n" + self.name
         sock.sendto(msg.encode(), self.server_addr)
         # Perhaps want to check updated table being in it. Need a delay
         timeout = time.time() + 0.5
         while time.time() < timeout:
-            if self.acked:
+            if self.table != []:
                 print(">>> [Welcome, You are registered.]", flush=True)
-                return
+                break
+        
 
     def deregister(self):
         msg = b"dereg\n" + self.name.encode()
@@ -102,7 +104,7 @@ class Client:
             if row[0] == name:
                 self.dest = row
         if len(self.dest) == 0:
-            print(">>> [Recipient unknown.]")
+            print(">>> [Recipient",name,"unknown.]")
             return
         if self.dest[3] == "no":
             self.send_offline(msg)    # offline message
@@ -110,6 +112,7 @@ class Client:
         
         formatted = "msg\n" + self.name + "\n" + msg
         sock.sendto(formatted.encode(), (self.dest[1], self.dest[2]))
+
         timeout = time.time() + 0.5
         while time.time() < timeout:
             if self.acked:
@@ -146,20 +149,31 @@ class Client:
     
     def send_offline(self, msg):
         self.acked = False
-        msg = "save\n" + self.dest[0] + "\n" + msg
-        sock.sendto(msg.encode(), self.server_addr)
 
-    
+        msg = "save\n" + self.dest[0] + "\n" + msg
+        def send_msg():
+            sock.sendto(msg.encode(), self.server_addr)
+
+        for i in range(5):
+            sock.sendto(msg.encode(), self.server_addr)
+            timeout = time.time() + 0.5
+            while time.time() < timeout:
+                if self.acked:
+                    print(">>> [Messages received by the server and saved]", flush=True)
+                    return
+            
+        if not self.acked:
+            print(">>> [Server not responding]", flush=True)
+            self.quit()
+            
     # Run by server_comm thread. Processes UDP messages from server
     def recv(self):
         while True:
             buf, addr = sock.recvfrom(2048)
-            lock.acquire()
             if self.online and addr == self.server_addr:
                 self.recv_server(buf)
             elif self.online:
                 self.recv_client(buf, addr)
-            lock.release()
     
     def recv_server(self, buf):
         head, data = buf.decode().split("\n", 1)
@@ -168,26 +182,27 @@ class Client:
             self.table_update(data)
         
         elif head == "reg":
-            if data == "OK":
-                self.acked = True
-            elif data == "ERR":
-                print("[" + self.name, " is already registered. Try a different name.]")
+            if data == "ERR":
+                print("[" + self.name, "is taken or already registered. Try a different name.]")
                 self.quit()
         
         elif head == "dereg":       # Server acks dereg (successful)  
-            if data.decode() == "OK":
+            if data == "OK":
                 self.online = False
         
         elif head == "save":        # Receive saved messages, acks for saving msgs
             if data == "OK":
-                print("[Messages received by the server and saved]\n>>>", end="", flush=True)
+                self.acked = True
             elif data == "ERR":
                 print("[Client %s exists!!]" % self.dest[0], flush=True)
             #print(">>> ", end="", flush=True)
         
         elif head == "stored":     # Saved messages upon returning online
-            if data == "|":        # indicates start of a batch of saved msgs
+            if data == "\t":        # indicates start of a batch of saved msgs
                 print("[You have messages]")
+                self.receiving = True
+            elif data == "\n":
+                self.receiving = False
             else:
                 print(">>>", data)
         
