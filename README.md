@@ -3,10 +3,7 @@ Name: Andrea Huang
 
 UNI: amh2341
 
---- 
 ## Using the Chat App
-You can run one instance of the server and multiple instances of clients from in the project directory. 
-
 Run the server (server mode):
 ```
 $ python3 ChatApp.py -s <port>
@@ -20,13 +17,8 @@ Multiple clients can be added by running this command in other terminals using a
 
 This command line application only uses packages built into Ubuntu and Python 3, so no additional dependencies need to be installed. 
 
----
-## Implementation
-
-Each of the 5 required chat app functionalities have been implemented according to the project specs. The server also prints out messages informing the user of what actions it is taking. Any additional features are mentioned below.
-
-### Protocol
-Messages sent between the server and client or between clients use the following format: `<header>\n<data>`
+## Protocol
+Messages sent between the server and client or between clients use the following format: `<header>\n<data>`.
 - The header describes the purpose of the message.
     - Headers for server-client messages:
         - `reg`: registration request or ACKs
@@ -40,21 +32,25 @@ Messages sent between the server and client or between clients use the following
         - `msg`: Direct chat message
         - `ack`: ACK for direct chat
 - The header and data are separated by `\n`.
-- The data may be the message body, a client name, ACK, etc. The server and clients respond to the data accordingly based on the command.
+- The data may be the message body, a client name, ACK, etc. The server and clients respond to the data accordingly based on the command. For some features, the data includes both a client name and message. These are separated by`\n`.
+- Server and Client receive incoming messages of up to 2048 bytes in length. This accomodates a message body of up to 2000 chars. The remaining 48 chars are reserved for client names (up to 40 chars), the header (up to 5 chars), and up to two `\n` separating the header from the message body and/or the client name from the message.
+
+## Implementation
+
+Each of the 5 required chat app functionalities have been implemented according to the project specifications. The server also prints out messages informing the user of what actions it is taking. Any additional features are mentioned below.
 
 ### `ChatApp.py`
 - Reads command line arguments and checks their validity.
-    - A name is validated by checking if it is under 40 alphanumeric characters
-    - An IP address is validated by checking if it can be convertd into an IPv4Address object
-    - Port numbers are checked to be between 1024-66535 
+    - A name is validated by checking if it consists of 40 of fewer alphanumeric characters.
+    - An IP address is validated by checking if it can be convertd into an IPv4Address object.
+    - Port numbers are checked to be between 1024-66535.
 - It then runs the program by instantiating a Client or Server object and calling `run()` on either.
 
 ### `server.py`
-This defines a Server class which is created by `Chatapp.py` in server mode.
+Defines a Server class which is created in server mode by `Chatapp.py`.
 
 #### Initialization
-- `run()` is called on a Client object in `ChatApp.py` which binds the server's socket and starts a while loop to receive messages.
-- Incoming messages can have of a max length of 2048. This accomodates a message body of up to 2000 chars. The remaining 48 chars are reserved for client names (up to 40 chars) and the header (up to 6 chars).
+- `run()` is called on a Server object in `ChatApp.py` which binds the server's socket and starts a while loop to receive messages. Accepts messages up to 2048 bytes. 
 - The message header and body are split by `\n`, and the server takes appropriate action based on the header.
 
 #### Register
@@ -62,18 +58,18 @@ This defines a Server class which is created by `Chatapp.py` in server mode.
 - `register(addr, name)` 
     - Checks if a client is in the client table by `name`. 
     - If it's not, the server adds it and broadcasts the table to all clients.
-    - If it is and its status in the table is offline, the registration succeeds.
-    - If it is but `addr` and the address in the table do not match, then another machine is trying to register with a client name that is taken. The server aborts the registration and notifies the client.
+    - If it is and its status in the table is offline, the registration succeeds and an updated table is broadcasted.
+    - If it is but `addr` and the address in the table do not match, then another machine is trying to register with a client name that is taken. The server aborts the registration and notifies the client of the error.
     - If it is and `addr` matches the address in the table, then the server didn't know that the client had gone offline. The table is broadcasted.
 
 #### Deregister
 - Initiated by a client message with header `dereg`. This calls `deregister(addr, name)` with the address that sent the message and the name from the message body.
 - `deregister(addr, name)`
     - Finds the client in the table by `name`.
-    - Changes the client's status in the table to offline and sends an ACK with "dereg" in the header.
+    - Changes the client's status in the table to offline and sends an ACK with header `dereg`.
     - Broadcasts updated table to all clients.
 
-#### Offline messages
+#### Offline Messages
 - Saving messages
     - Initiated by a client message with header `save` by calling `save_msg_recv()`. 
     - `save_msg_recv(addr, data)`
@@ -94,28 +90,32 @@ This defines a Server class which is created by `Chatapp.py` in server mode.
         - If `name` is in the dictionary of saved messages `saved`, then the server sends each of the saved messages one at a time with the header "saved" to `addr`. 
         - The sequence of messages are preceded with a message with header "saved" and content `\t`, and succeeded similarly with a message with content `\n`. This is to notify the client of the start/end of saved messages it will be receiving.
 
-- Group chat
-    - Initiated by a client message with header `all` by calling `send_all()`. 
-    - `send_all(addr, data)`
-        - Data includes sender and message, split by `\n`.
-        - If the message is not an ACK, the message is broadcasted to all clients with `broadcast_msg()`.
-        - If the message is an ACK, then the sender has received a channel message forwarded by the server. To note this, the server changes the boolean value of the sender in the dictionary `channel_acks` to True.
-    - `broadcast_msg(addr, sender, msg)`
-        - Sends an ACK to the sender with header `all` (to `addr`).
-        - Outgoing message takes the following format: `"all\n<sender>\n<content>`
-        - Attempts to send message to all clients except the sender. Saves message for offline recipients and sends messages to online recipients. Online recipients are saved as keys in a dictionary `channel_acks` with initial value False.
-        - After broadcasting to all clients, the server starts an instance of Python's Timer class which starts a thread that calls `check_channel()` in 500 ms to see if all online recipients have ACKed the channel message. 
-    - `check_channel(sender, msg)`
-        - Checks if the values for all clients in the dictionary `channel_acks` are True.
-        - If not True, the server checks if the client is still responsive with `client_alive()` and updates the table accordingly. The table is broadcasted if there are any updates.
+#### Group Chat
+- Initiated by a client message with header `all` by calling `send_all()`. 
+- `send_all(addr, data)`
+    - Data includes sender and message, split by `\n`.
+    - If the message is not an ACK, the message is broadcasted to all clients with `broadcast_msg()`.
+    - If the message is an ACK, then the sender has received a channel message forwarded by the server. To note this, the server changes the boolean value of the sender in the dictionary `channel_acks` to True.
+- `broadcast_msg(addr, sender, msg)`
+    - Sends an ACK to the sender with header `all` (to `addr`).
+    - Outgoing message takes the following format: `"all\n<sender>\n<content>`
+    - Attempts to send message to all clients except the sender. Saves message for offline recipients and sends messages to online recipients. Online recipients are saved as keys in a dictionary `channel_acks` with initial value False.
+    - After broadcasting to all clients, the server starts an instance of Python's Timer class which starts a thread that calls `check_channel()` in 500 ms to see if all online recipients have ACKed the channel message. 
+- `check_channel(sender, msg)`
+    - Checks if the values for all clients in the dictionary `channel_acks` are True.
+    - If not True, the server checks if the client is still responsive with `client_alive()` and updates the table accordingly. The table is broadcasted if there are any updates.
 
 
 ### `client.py`
 
-The client runs on two threads: one for processing user input, one for receiving messages from the server and client.
+Defines a Client class which is created in client mode by `Chatapp.py`.
 
 #### Initialization
-- `run()` is called on a Client in `ChatApp.py`. This binds the client socket to client_port, starts a thread that calls `recv()` for receiving messages, registers the client with `register()`, and calls `process_input()` to processing user input.
+- `run()` is called on a Client object in `ChatApp.py`. 
+    - This binds the client socket to the client port
+    - Starts a thread that runs `recv()` for receiving messages
+    - Registers the client with `register()`
+    - Calls `process_input()` to processing user input.
 - `recv()`
     - Accepts messages up to 2048 bytes. 
     - If the addr sending the message matches the server address, the client calls `recv_server()` to handle the messages. Otherwise, it calls `recv_client()` to handle direct chat messages.
@@ -143,10 +143,9 @@ The client runs on two threads: one for processing user input, one for receiving
     - Otherwise, the user is notified that the client is already offline or that it can only register with its own name and deregistration terminates.
 - `deregister()`
     - Attempts to send dereg request to server up to 5 times. An attempt times out if an ACK isn't received in 500ms. 
-    - Timeout was implemented with `time.time()` and a loop checking the boolean class attribute `acked` which is flipped to True if the client receives an ACK with a "dereg" header.
+    - Timeout was implemented with `time.time()` and a loop checking the boolean class attribute `acked` which is flipped to True if the client receives an ACK with header `dereg`.
 
-
-#### Direct chat
+#### Direct Chat
 - Sending messages
     - Initiated by user input starting with `>>> send ...`. If name and message (length <= 2000 chars) are both in input, calls `send(name, msg)`. Otherwise, prints error message and aborts send.
     - `send(name, msg)`
@@ -155,24 +154,26 @@ The client runs on two threads: one for processing user input, one for receiving
             - If no ACK was received, the client displays a prompt that the message was not ACKed and calls `send_offline(msg)` to send `msg` to the server (next section).
             - Timeout implemented in the same way as in `deregister()`.
         - If `name` found in client table and the associated status is offine, calls `send_offline(msg)`.
+
 - Receiving messages
     - Messages coming from addresses different from the server address are all treated as client messages by calling `recv_client(buf, addr)`, where `buf` includes the header and message.
     - `recv_client(buf, addr)`
         - If the header is "msg", then the sock sends a message with header "ack" back to `addr` and prints the sender and recipient.
         - If the header is "ack" and `addr` matches the address of the message destination, the class attribute `acked` is flipped to True to cancel the timeout.
-        
     
 #### Offline messages
-- Sending offline messages: `send_offline(msg)`
-    - Initiated when (1) The recipient is not online according to the client table, or (2) Sending a direct chat times out.
-    - Sends message to server with header `save` and body format: `<sender name>\n<msg>`. 
-    - Attempts to send save request up to 5 times, each waiting 500ms for an ACK from the server with header `save`.
-    - Timeout implemented the same way as in `deregister()`.
-- Receiving offline messages
-    - Upon returning online, the server will send all the messages saved for the client one message at a time (including sender, timestamp, and message), each with the header `saved`.
-    - The start of the sequence of saved messages is communicated by the server with message with header `saved` and message body `\t`. The end is communicated similarly with message body `\n`.
+- Sending offline messages: 
+    - Initiated when (1) The recipient is not online according to the client table, or (2) Sending a direct chat times out by calling `send_offline()`
+    - `send_offline(msg)`
+        - Sends message to server with header `save` and body format: `<sender name>\n<msg>`. 
+        - Attempts to send save request up to 5 times, each waiting 500ms for an ACK from the server with header `save`.
+        - Timeout implemented the same way as in `deregister()`.
 
-#### Group chat
+- Receiving offline messages
+    - Upon returning online with `reg`, the server will send all the messages saved for the client one message at a time (including sender, timestamp, and message), each with the header `saved`.
+    - The start of the sequence of saved messages is communicated by the server with message with header `saved` and message body `\t`. The end is communicated similarly with message body `\n`. This allows the client to display all saved messages in a row without being interrupted by other prompts or functions.
+
+#### Group Chat
 - Sending channel messages
     - Initiated by user input starting with `>>> send_all <message>`. If message is 2000 chars or less, calls `send_all()`.
     - `send_all()`
@@ -193,7 +194,7 @@ I tested all the required functionalities and error catching to the best of my a
 
 The text output for tests are provided in the specs are provided in `test.txt`. Tests 1-3 are the outputs for the 3 test cases provided in the specs.
 
-Test 4: Stored messages for direct and group chats to an offline client
+*Test 4: Stored messages for direct and group chats to an offline client.*
 - Start server
 - Start client x
 - Start client y
@@ -203,7 +204,7 @@ Test 4: Stored messages for direct and group chats to an offline client
 - send z -> y
 - reg y
 
-Test 5: Detecting silent leave via send_all
+*Test 5: Detecting silent leave via `send_all`.*
 - Start server
 - Start client x
 - Start client y
