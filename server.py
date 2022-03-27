@@ -28,7 +28,7 @@ class Server:
                 next
             
             action, data = buf.decode().split("\n", 1)
-            print("From " + str(addr)+ ":", action, data)
+            #print("From " + str(addr)+ ":", action, data)
 
             if action == "reg":             # Register client
                 self.register(addr, data)
@@ -42,14 +42,23 @@ class Server:
                 self.acked = True
     
     def register(self, addr, name):
-        # Check for client name in self.table
+        # Check for client is known in self.table
         for i in range(len(self.table)):
-            if self.table[i][0] == name:
-                self.table[i][3] = "yes"
-                print("Updated registration for", name)
-                self.send_saved(addr, name)
-                self.broadcast_table()
-                return
+            row = self.table[i]
+            if row[0] == name:
+                if row[3] == "no":
+                    row[3] = "yes"
+                    row[1], row[2] = addr
+                    
+                    self.sendto(b"reg\OK", addr)
+                    self.send_saved(addr, name)
+                    self.broadcast_table()
+                    print("Updated registration for", name)
+                    return
+                else:
+                    print("Client", name, "already online, aborting registration.")
+                    sock.sendto(b"reg\nERR", addr)
+                    return
         
         # If client new, add to list of clients and client self.table
         entry = [name, addr[0], addr[1], 'yes']
