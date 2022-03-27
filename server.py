@@ -8,7 +8,6 @@ import datetime
 # client table. Data format: ['name','ip','port','status'],   
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-lock = threading.Lock()
 
 class Server:
     def __init__(self, server_port):
@@ -28,8 +27,7 @@ class Server:
                 next
             
             action, data = buf.decode().split("\n", 1)
-            #print("From " + str(addr)+ ":", action, data)
-
+            
             if action == "reg":             # Register client
                 self.register(addr, data)
             elif action == "dereg":         # Deregister client
@@ -55,30 +53,25 @@ class Server:
                     row[3] = "yes"
                     self.broadcast_table()
                     self.send_saved(addr, name) 
-                    print("Updated registration for", name)
+                    print("Client", name, "returned online")
                 
                 # Client online but has same address (server table might not have known about it going offline)
                 elif row[1] == addr[0] and row[2] == addr[1]:
                     self.broadcast_table()
 
-                else:
-                    print("Client", name, "already online, aborting registration.")
-                    sock.sendto(b"reg\nERR", addr)
-                
                 return
         
         # If client new, add to list of clients and client self.table
         entry = [name, addr[0], addr[1], 'yes']
         self.table.append(entry)
         print("Registered", name)
-        sock.sendto(b"reg\nOK", addr)
         self.broadcast_table()
     
     def deregister(self, addr, name):
         for i in range(len(self.table)):
             if self.table[i][0] == name:
                 self.table[i][3] = "no"
-                sock.sendto(b"dereg\nOK", addr)
+                sock.sendto(b"dereg\nACK", addr)
                 print("Deregistered", name)
                 self.broadcast_table()
 
@@ -97,7 +90,7 @@ class Server:
             # Check recipient status, save/send msg accordingly
             if row[0] == recipient:
                 if row[3] == "no":
-                    sock.sendto(b"save\nOK", addr)  # ack msg saved
+                    sock.sendto(b"save\nACK", addr)  # ack msg saved
                     print("Saving message from", sender, "to", recipient, ":", msg)
                 else:
                     alive = self.client_alive(addr=addr)
@@ -127,20 +120,19 @@ class Server:
         print("Saving message for ", recipient, ": ", msg, sep="")
         self.saved[recipient].append(formatted)
 
-
     def send_saved(self, addr, name):
         if name in self.saved:
-            sock.sendto(b"stored\n\t", addr)
+            sock.sendto(b"saved\n\t", addr)
             for entry in self.saved[name]:
-                msg = "stored\n" + entry
+                msg = "saved\n" + entry
                 sock.sendto(msg.encode(), addr)
-            sock.sendto(b"stored\n\n", addr)
+            sock.sendto(b"saved\n\n", addr)
             del self.saved[name]
 
 
     def send_all(self, addr, data):
         sender, msg = data.split("\n", 1)
-        if msg == "OK":
+        if msg == "ACK":
             self.channel_acks[sender] = True
         else:
             print("Sending message from", sender, "to channel:", msg)
@@ -148,7 +140,7 @@ class Server:
             
 
     def broadcast_msg(self, addr, sender, msg):
-        sock.sendto(b"all\nOK", addr)   # Ack send_all msg from client
+        sock.sendto(b"all\nACK", addr)   # Ack send_all msg from client
         out = "all\n" + sender + "\n" + msg
         out_bytes = out.encode()
 

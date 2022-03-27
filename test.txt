@@ -1,0 +1,129 @@
+
+#################
+Test 1 Output
+#################
+
+CLIENT X
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> [Client table updated.]
+>>> [Client table updated.]
+>>> [Client table updated.]
+>>> send y hello
+>>> [Message received by y.]
+>>> send z hello
+>>> [Message received by z.]
+>>> y: hello
+>>> z: hello
+>>> send x hello
+x: hello
+>>> >>> [Message received by x.]
+>>> 
+
+CLIENT Y
+>>> [Client table updated.]
+[Welcome, You are registered.]
+>>> >>> [Client table updated.]
+>>> [Client table updated.]
+>>> x: hello
+>>> send x hello
+>>> [Message received by x.]
+>>> send y hello 
+y: hello
+>>> >>> [Message received by y.]
+>>> send z hello
+>>> [Message received by z.]
+>>> z: hello
+
+CLIENT Z
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> x: hello
+>>> y: hello
+>>> send x hello
+>>> [Message received by x.]
+>>> send y hello
+>>> [Message received by y.]
+
+SERVER
+Server listening...
+Registered x
+Broadcasting client table
+Registered y
+Broadcasting client table
+Registered z
+Broadcasting client table
+Broadcasting client table
+
+
+#################
+Test 2 Output
+#################
+
+CLIENT X 
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> [Client table updated.]
+>>> [Client table updated.]
+>>> send y hello
+>>> [Server not responding]
+>>> [Exiting]
+
+CLIENT Y
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> dereg y
+>>> [You are offline. Bye.]
+
+SERVER
+Server listening...
+Registered x
+Broadcasting client table
+Registered y
+Broadcasting client table
+Deregistered y
+Broadcasting client table
+^CTraceback (most recent call last):
+  File "ChatApp.py", line 71, in <module>
+    chatapp.run()
+  File "ChatApp.py", line 31, in run
+    s.run()
+  File "/home/andrea/csee4119-pa1/server.py", line 26, in run
+    buf, addr = sock.recvfrom(2048)
+KeyboardInterrupt
+
+
+#################
+Test 3 Output
+#################
+
+CLIENT X
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> [Client table updated.]
+>>> [Client table updated.]
+>>> send_all hi
+>>> [Message received by Server.]
+>>> 
+
+CLIENT Y
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> [Client table updated.]
+>>> [Channel-Message x: hi]
+
+CLIENT Z 
+>>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> [Channel-Message x: hi]
+
+SERVER
+Server listening...
+Registered x
+Broadcasting client table
+Registered y
+Broadcasting client table
+Registered z
+Broadcasting client table
+Sending message from x to channel: hi
+
