@@ -165,7 +165,7 @@ class Server:
     def check_channel(self, sender, msg):
         table_updated = False
         for name in self.channel_acks:
-            if self.channel_acks[name] == False:
+            if not self.channel_acks[name]:
                 # Get client addr and row num
                 for i in range(len(self.table)):
                     row = self.table[i]
