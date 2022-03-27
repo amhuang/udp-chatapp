@@ -90,7 +90,6 @@ class Client:
                 return
         self.print("[Register failed.]")
         self.online = False
-        
 
     def deregister(self):
         msg = b"dereg\n" + self.name.encode()
@@ -235,12 +234,16 @@ class Client:
             self.acked = True
 
     def clean_msg(self, data, group=False):
+        data = data.strip()
         # strips whitespace off name for group chats
         if group:
-            return data.strip()
+            if len(data) <= 2000: 
+                return data.strip()
+            else:
+                self.print("[Message must be under 2000 characters (currently "+str(len(msg))+").]")
 
         # Returns name and msg for direct chats
-        data = data.strip().split(" ", 1)
+        data = data.split(" ", 1)
         if len(data) != 2:
             self.print("[Please specify a message and a recipient.]")
             return None, None
@@ -253,6 +256,9 @@ class Client:
         if len(msg) == 0:
             self.print("[Please enter a message to send.]")
             return None, None
+        if len(msg) > 2000:
+            self.print("[Message must be under 2000 characters (currently "+str(len(msg))+").]")
+            return None, None 
         return name, msg
     
     def table_update(self, data):

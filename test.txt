@@ -18,7 +18,6 @@ CLIENT X
 >>> send x hello
 >>> x: hello
 >>> [Message received by x.]
->>> 
 
 CLIENT Y
 >>> [Client table updated.]
@@ -29,8 +28,8 @@ CLIENT Y
 >>> send x hello
 >>> [Message received by x.]
 >>> send y hello 
-y: hello
->>> >>> [Message received by y.]
+>>> y: hello
+>>> [Message received by y.]
 >>> send z hello
 >>> [Message received by z.]
 >>> z: hello

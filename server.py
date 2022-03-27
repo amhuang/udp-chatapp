@@ -102,7 +102,7 @@ class Server:
                         sock.sendto(updated, addr)
                         return
                     else:       # Server table inaccurate. Update table, broadcast, and save msg   
-                        print(msg, "unresponsive. Updating and broadcasting table.")
+                        print(recipient, "unresponsive. Updating and broadcasting table.")
                         row[3] = "no"
                         self.broadcast_table() 
                         
