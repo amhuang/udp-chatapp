@@ -1,8 +1,7 @@
 import socket
-import pickle
+import json
 import threading
 import select
-from tabulate import tabulate
 import time
 import datetime
 
@@ -29,7 +28,7 @@ class Server:
                 next
             
             action, data = buf.decode().split("\n", 1)
-            print("from " +str(addr)+ ":", action, data)
+            print("From " + str(addr)+ ":", action, data)
 
             if action == "reg":             # Register client
                 self.register(addr, data)
@@ -43,12 +42,11 @@ class Server:
                 self.acked = True
     
     def register(self, addr, name):
-        print("registering", name)
         # Check for client name in self.table
         for i in range(len(self.table)):
             if self.table[i][0] == name:
                 self.table[i][3] = "yes"
-                print("update registration\n", tabulate(self.table))
+                print("Updated registration for", name)
                 self.send_saved(addr, name)
                 self.broadcast_table()
                 return
@@ -56,18 +54,16 @@ class Server:
         # If client new, add to list of clients and client self.table
         entry = [name, addr[0], addr[1], 'yes']
         self.table.append(entry)
-        print("new registration\n", tabulate(self.table))
+        print("Registered", name)
         self.broadcast_table()
     
     def deregister(self, addr, name):
-        print("Deregistering", name)
         for i in range(len(self.table)):
             if self.table[i][0] == name:
                 self.table[i][3] = "no"
                 sock.sendto(b"dereg\nOK", addr)
-                print("Successful dereg of", name)
+                print("Deregistered", name)
                 self.broadcast_table()
-                print(tabulate(self.table))
 
     def save_msg_recv(self, addr, data):
 
@@ -80,20 +76,23 @@ class Server:
             #  Get name of sender from addr
             if row[1] == addr[0] and row[2] == addr[1]:
                 sender = row[0]
-
+                
             # Check recipient status, save/send msg accordingly
             if row[0] == recipient:
                 if row[3] == "no":
                     sock.sendto(b"save\nOK", addr)  # ack msg saved
+                    print("Saving message from", sender, "to", recipient, ":", msg)
                 else:
                     alive = self.client_alive(addr=addr)
                     if alive:   # Client table inaccurate. Abort save, send most recent table
+                        print(recipient, "tried to save message for active client. Sending table to update.")
                         sock.sendto(b"save\nERR", addr)
-                        pkl = pickle.dumps(self.table)
-                        updated = b"table\n" + pkl
+                        json_list = json.dumps(self.table)
+                        updated = b"table\n" + json_list.encode()
                         sock.sendto(updated, addr)
                         return
                     else:       # Server table inaccurate. Update table, broadcast, and save msg   
+                        print(msg, "unresponsive. Updating and broadcasting table.")
                         row[3] = "no"
                         self.broadcast_table() 
                         
@@ -108,7 +107,9 @@ class Server:
             formatted = "Channel-Message " + sender + ": " + "[" +  ts + "] " + msg
         else:
             formatted = sender + ": " + "[" +  ts + "] " + msg
+        print("Saving message for", recipient, ":", msg)
         self.saved[recipient].append(formatted)
+
 
     def send_saved(self, addr, name):
         if name in self.saved:
@@ -118,13 +119,13 @@ class Server:
                 sock.sendto(msg.encode(), addr)
             del self.saved[name]
 
+
     def send_all(self, addr, data):
         sender, msg = data.split("\n", 1)
         if msg == "OK":
             self.channel_acks[sender] = True
-            print(self.channel_acks)
-            return
         else:
+            print("Sending message from", sender, "to channel:", msg)
             self.broadcast_msg(addr, sender, msg)
             
 
@@ -142,18 +143,15 @@ class Server:
             if row[3] == "yes":
                 self.channel_acks[target] = False    # save boolean for checking if acked
                 addr = (row[1], row[2])
-                print("sending channel msg to", row[0])
                 sock.sendto(out_bytes, addr)
             elif row[3] == "no":
                 self.save_msg(target, sender, msg, channel=True)
 
         th = threading.Timer(0.5, self.check_channel, args=(sender, msg,))
         th.start()
-        print("broadcast_msg done")
 
 
     def check_channel(self, sender, msg):
-        print("checking acks")
         table_updated = False
         for name in self.channel_acks:
             if self.channel_acks[name] == False:
@@ -167,17 +165,17 @@ class Server:
                 # If client not alive, update table and broadcast
                 if not self.client_alive(addr):
                     table_updated = True
-                    self.save_msg(name, sender, msg)
+                    self.save_msg(name, sender, msg, channel=True)
                     self.table[rownum][3] = "no"
-                    print("msg saved for", name, "from", sender, msg)
+                    print(msg, "unresponsive. Updating and broadcasting table, saving message:", msg)
         
         if table_updated:
             self.broadcast_table()
 
 
     def broadcast_table(self):
-        pkl = pickle.dumps(self.table)
-        msg = b"table\n" + pkl
+        json_list = json.dumps(self.table)
+        msg = b"table\n" + json_list.encode()
         for row in self.table:
             addr = (row[1], row[2])
             sock.sendto(msg, addr)

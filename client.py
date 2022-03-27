@@ -1,11 +1,11 @@
 import socket
-import pickle
-from tabulate import tabulate
+import json
 import select
 import threading
 import time
 import sys
 import os
+from tabulate import tabulate
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 lock = threading.Lock()
@@ -161,7 +161,8 @@ class Client:
         head, data = buf.split(b"\n", 1)
         head = head.decode()
 
-        if head == "table":         
+        if head == "table": 
+            data = data.decode()        
             self.table_update(data)
         
         elif head == "dereg":       # Server acks dereg (successful)  
@@ -171,7 +172,7 @@ class Client:
         elif head == "save":        # Receive saved messages, acks for saving msgs
             data = data.decode()
             if data == "OK":
-                print("[Messages received by the server and saved]\n>>>", flush=True)
+                print("[Messages received by the server and saved]\n>>>", end="", flush=True)
             elif data == "ERR":
                 print("[Client %s exists!!]" % self.dest[0], flush=True)
             #print(">>> ", end="", flush=True)
@@ -234,7 +235,7 @@ class Client:
         return name, msg
     
     def table_update(self, data):
-        self.table = pickle.loads(data)
+        self.table = json.loads(data)
         print("[Client table updated.]")
         print(tabulate(self.table))
         print(">>> ", end="", flush=True)
