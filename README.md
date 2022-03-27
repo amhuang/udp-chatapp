@@ -5,15 +5,18 @@ UNI: amh2341
 
 --- 
 ## Using the Chat App
-Run the server mode of chat app in the project directory with the following command:
+You can run one instance of the server and multiple instances of clients from in the project directory. 
+
+Run the server (server mode):
 ```
 $ python3 ChatApp.py -s <port>
 ```
 
-Run one or more instances of client mode for chat app:
+Run a client (client mode):
 ```
-$ chatapp -c <name> <server-ip> <server-port> <client-port> 
+$ python3 ChatApp.py <name> <server-ip> <server-port> <client-port> 
 ```
+Multiple clients can be added by running this command in other terminals using a different `<name>` and `<client-port>`.
 
 This command line application only uses packages built into Ubuntu and Python 3, so no additional dependencies need to be installed. 
 
@@ -64,7 +67,7 @@ This defines a Server class which is created by `Chatapp.py` in server mode.
 
 - Deregister
     - Initiated with a client message with header "dereg." Client name taken from the message body.
-    
+
 
 - Offline messages
 
@@ -79,7 +82,7 @@ The client runs on two threads: one for processing user input, one for receiving
     - 
 
 - Register
-    - Initiated with user input starting with "reg ".
+    - Initiated with user input starting with `>>> reg ...`
         - If the remainder of the input matches the client's name and the client is not online (stored as class attributes), client calls `register()`.
         - If the client is already online, the prompt notifies the user and registration terminates.
         - Otherwise, the client is notified that it can only register with its own name and  registration terminates.
@@ -100,7 +103,6 @@ The client runs on two threads: one for processing user input, one for receiving
 
 ## Chat App Functionalities
 
-
 ### Direct chat
 ```
 >>> send <name> <message>
@@ -116,7 +118,7 @@ send message to all clients:
 ```
 ###  Re-register (return online)
 ```
->>> reg <nickname>
+
 ```
 
 ### Offline Chat

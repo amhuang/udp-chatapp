@@ -1,7 +1,7 @@
 
-#################
+########################################
 Test 1 Output
-#################
+########################################
 
 CLIENT X
 >>> [Client table updated.]
@@ -16,14 +16,14 @@ CLIENT X
 >>> y: hello
 >>> z: hello
 >>> send x hello
-x: hello
->>> >>> [Message received by x.]
+>>> x: hello
+>>> [Message received by x.]
 >>> 
 
 CLIENT Y
 >>> [Client table updated.]
-[Welcome, You are registered.]
->>> >>> [Client table updated.]
+>>> [Welcome, You are registered.]
+>>> [Client table updated.]
 >>> [Client table updated.]
 >>> x: hello
 >>> send x hello
@@ -56,9 +56,9 @@ Broadcasting client table
 Broadcasting client table
 
 
-#################
+########################################
 Test 2 Output
-#################
+########################################
 
 CLIENT X 
 >>> [Client table updated.]
@@ -93,9 +93,9 @@ Broadcasting client table
 KeyboardInterrupt
 
 
-#################
+########################################
 Test 3 Output
-#################
+########################################
 
 CLIENT X
 >>> [Client table updated.]
@@ -127,3 +127,11 @@ Registered z
 Broadcasting client table
 Sending message from x to channel: hi
 
+
+########################################
+Test 4 Output
+########################################
+
+########################################
+Test 5 Output
+########################################
