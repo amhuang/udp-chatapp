@@ -1,7 +1,6 @@
 import socket
 import json
 import threading
-import select
 import time
 import datetime
 

@@ -1,9 +1,7 @@
 import socket
 import json
-import select
 import threading
 import time
-import sys
 import os
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
