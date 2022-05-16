@@ -1,4 +1,4 @@
-# CSEE 4119 PA1: UDP Simple Chat Application
+# Simple UDP Chat Application
 Name: Andrea Huang
 
 UNI: amh2341
